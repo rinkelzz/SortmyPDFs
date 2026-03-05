@@ -1,0 +1,5 @@
+.venv-vosk/
+voice.wav
+vosk-models/
+copilot-multimodal/
+.openclaw/
