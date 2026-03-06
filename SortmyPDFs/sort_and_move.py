@@ -276,8 +276,12 @@ def ensure_folder(token, path: str):
     if res.status_code == 200:
         return res.json().get("id")
 
-    parent, name = path.rsplit("/", 1)
-    parent_url = f"https://graph.microsoft.com/v1.0/me/drive/root:/{parent}:/children"
+    if "/" in path:
+        parent, name = path.rsplit("/", 1)
+        parent_url = f"https://graph.microsoft.com/v1.0/me/drive/root:/{parent}:/children"
+    else:
+        parent, name = "", path
+        parent_url = "https://graph.microsoft.com/v1.0/me/drive/root/children"
     payload = {
         "name": name,
         "folder": {},
@@ -344,7 +348,12 @@ def main(apply: bool = False):
             new_name = f"{date}_{firma_fn}_{doc_fn}.pdf"
             new_name = re.sub(r"\s+", " ", new_name).strip()
 
-            dest_path = f"{TARGET_ROOT}/{recipient}/{firma}"
+            # Folder routing rules
+            if doc_type == "Kaufvertrag":
+                # Per your preference: keep contracts under Tim/Sonstiges (but keep company in filename)
+                dest_path = f"{TARGET_ROOT}/Tim/Sonstiges"
+            else:
+                dest_path = f"{TARGET_ROOT}/{recipient}/{firma}"
 
             print("---")
             print("src:", name)
