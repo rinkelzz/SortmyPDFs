@@ -348,10 +348,14 @@ def main(apply: bool = False):
             new_name = f"{date}_{firma_fn}_{doc_fn}.pdf"
             new_name = re.sub(r"\s+", " ", new_name).strip()
 
+            # Normalize some common company names (avoid OCR quirks)
+            if "volkswagen" in firma.lower():
+                firma = "Volkswagen AG"
+
             # Folder routing rules
             if doc_type == "Kaufvertrag":
-                # Per your preference: keep contracts under Tim/Sonstiges (but keep company in filename)
-                dest_path = f"{TARGET_ROOT}/Tim/Sonstiges"
+                # Per your preference: keep contracts under the company folder
+                dest_path = f"{TARGET_ROOT}/Tim/{firma}"
             else:
                 dest_path = f"{TARGET_ROOT}/{recipient}/{firma}"
 
