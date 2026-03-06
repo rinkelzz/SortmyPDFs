@@ -1,5 +1,8 @@
-.venv-vosk/
-voice.wav
-vosk-models/
-copilot-multimodal/
-.openclaw/
+# generated
+out/
+update-*.log
+SortmyPDFs/.tmp/
+SortmyPDFs/.venv/
+SortmyPDFs/.token_cache.bin
+SortmyPDFs/state.json
+SortmyPDFs/.env
