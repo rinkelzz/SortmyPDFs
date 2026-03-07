@@ -28,6 +28,12 @@ Hinweis: `offline_access`/`openid`/`profile` sind in MSAL (device code flow) res
 2) Inbox anzeigen:
 - `python graph_list_inbox.py`
 
-3) Sortieren (erst Dry-Run, dann Apply):
+3) (Optional) PDFs aus einem IMAP-Postfach einsammeln (Anhänge) und in den OneDrive-Inbox-Ordner legen:
+- `.env` befüllen (siehe `.env.example`, IMAP_* Variablen)
+- `python imap_ingest.py` (nur UNSEEN)
+- `python imap_ingest.py --delete` (löscht Mails nach erfolgreichem Upload)
+- `python imap_ingest.py --all --delete` (alle Mails, dann löschen)
+
+4) Sortieren (erst Dry-Run, dann Apply):
 - `python sort_and_move.py`
 - `python sort_and_move.py --apply`
