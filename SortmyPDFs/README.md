@@ -1,42 +1,85 @@
-# SortmyPDFs
+# SortmyPDFs (aka „SortmyPDF“)
 
-Ziel: Eingescannte PDFs aus OneDrive (Graph API) automatisch in Ordner einsortieren und umbenennen.
+Ziel: PDFs in **OneDrive** automatisch einsammeln, **umbenennen** und in eine feste Ordnerstruktur **einsortieren**.
 
-## Regeln (aktuell)
-- Inbox-Ordner (OneDrive Root): `vomDrucker`
-- Sortierung: `/SortmyPDFs/<Empfaenger>/<Firma>/`
+Typischer Use-Case:
+- Scanner/Drucker speichert Scans als PDF in einen OneDrive-Eingangsordner (`vomDrucker`).
+- Dieses Projekt liest die PDFs, macht (falls nötig) OCR auf Seite 1 und entscheidet daraus:
+  - **Empfänger** (Tim/Chantal/Sonstige)
+  - **Firma/Absender**
+  - **Dokumenttyp** (Kurztyp)
+  - **Datum**
+- Anschließend wird die Datei verschoben nach `/SortmyPDFs/<Empfaenger>/<Firma>/` und sauber benannt.
+
+## OneDrive Ordner & Namensschema (Regeln, aktuell)
+- **Inbox-Ordner** (OneDrive Root): `vomDrucker`
+- **Zielstruktur**: `/SortmyPDFs/<Empfaenger>/<Firma>/`
   - Empfaenger: `Chantal` | `Tim` | `Sonstige`
   - Firma: z.B. `HDI`
-- Dateiname: `YYYY-MM-DD_<Firma>_<Kurztyp>.pdf`
+- **Dateiname**: `YYYY-MM-DD_<Firma>_<Kurztyp>.pdf`
   - Datum = Datum im Brief; falls nicht gefunden: OneDrive `createdDateTime`
+
+## Voraussetzungen
+
+### Python/Dependencies
+- Python venv ist im Repo vorgesehen: `SortmyPDFs/.venv/`
+- Python-Pakete (über `pip` in der venv): `msal`, `requests`, `python-dotenv`
+
+### Systemtools (für OCR)
+Für die Erkennung auf Seite 1 nutzt das Projekt:
+- `pdftoppm` (Poppler) – rendert Seite 1 als PNG
+- `tesseract` – OCR
+- Sprachpaket: i.d.R. `deu`
+
+Ohne diese Tools kann die Sortierung weniger gut werden (Dateiname/Datum/Firma werden dann häufiger aus Metadaten/Dateinamen geschätzt).
 
 ## OneDrive Auth (Personal)
 Wir nutzen Microsoft Graph `device code flow`.
 
-Du brauchst dafür eine **App Registration** (Client ID) die **Consumer Accounts** unterstützt.
+Du brauchst dafür eine **App Registration** (Client ID), die **Consumer Accounts** unterstützt.
 
 Benötigte Scopes (mindestens):
 - `Files.ReadWrite.All`
 
 Hinweis: `offline_access`/`openid`/`profile` sind in MSAL (device code flow) reserviert und werden nicht als normale Scopes übergeben.
 
-## Nächste Schritte
-1) Auth:
+## Quickstart
+
+### 0) `.env` anlegen
+- Vorlage: `.env.example`
+- Kopieren:
+  - `cp .env.example .env`
+
+### 1) venv aktivieren
+- `cd /home/tim/.openclaw/workspace/SortmyPDFs`
 - `source .venv/bin/activate`
+
+### 2) OneDrive Auth (einmalig)
 - `python auth_device_code.py`
 
-2) Inbox anzeigen:
+### 3) Inbox testen
 - `python graph_list_inbox.py`
 
-3) (Optional) PDFs aus einem IMAP-Postfach einsammeln (Anhänge) und in den OneDrive-Inbox-Ordner legen:
-- `.env` befüllen (siehe `.env.example`, IMAP_* Variablen)
-- `python imap_ingest.py` (nur UNSEEN)
-- `python imap_ingest.py --delete` (löscht Mails nach erfolgreichem Upload)
-- `python imap_ingest.py --all --delete` (alle Mails, dann löschen)
+### 4) Sortieren
+- Dry-Run:
+  - `python sort_and_move.py`
+- Apply (verschiebt/benennt in OneDrive wirklich um):
+  - `python sort_and_move.py --apply`
 
-4) Sortieren (erst Dry-Run, dann Apply):
-- `python sort_and_move.py`
-- `python sort_and_move.py --apply`
+### 5) Optional: IMAP (E-Mail-Archiv) → OneDrive Inbox
+Wenn du ein separates IMAP-Postfach als Sammelstelle für Dokumenten-Mails nutzt:
+- `.env` befüllen (siehe `.env.example`, IMAP_* Variablen)
+- Run (nur UNSEEN):
+  - `python imap_ingest.py`
+- Run + nach Erfolg löschen:
+  - `python imap_ingest.py --delete`
+- Alle Mails verarbeiten:
+  - `python imap_ingest.py --all --delete`
+
+## State / Duplikate / Temporäre Dateien
+- `state.json`: bereits verarbeitete OneDrive-Dateien (damit nichts doppelt sortiert wird)
+- `state_imap.json`: bereits verarbeitete IMAP-UIDs + SHA256-Hashes von Attachments
+- `.tmp/`: temporäre OCR-Artefakte (gerenderte Seite 1 + OCR-Text)
 
 ## IMAP Setup Notes (E-Mail-Archiv-Postfach)
 - Der IMAP-Ingest lädt PDF-Anhänge aus einem separaten Archiv-Postfach und legt sie in `vomDrucker/` ab.
@@ -52,4 +95,4 @@ Benötigte Variablen:
 
 ### Troubleshooting
 - **SSL Hostname mismatch:** Wenn `ssl.SSLCertVerificationError: Hostname mismatch` kommt, stimmt `IMAP_HOST` nicht zum Zertifikat (SAN/CN) auf Port 993.
-- **Delete Flag:** Das Script nutzt das System-Flag `\Deleted` (ein Backslash). Manche Server akzeptieren keine abweichenden Schreibweisen.
+- **Delete Flag:** Das Script nutzt das System-Flag `\\Deleted` (ein Backslash). Manche Server akzeptieren keine abweichenden Schreibweisen.
