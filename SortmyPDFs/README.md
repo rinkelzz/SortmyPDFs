@@ -85,6 +85,54 @@ Wenn du ein separates IMAP-Postfach als Sammelstelle für Dokumenten-Mails nutzt
 - Der IMAP-Ingest lädt PDF-Anhänge aus einem separaten Archiv-Postfach und legt sie in `vomDrucker/` ab.
 - Danach sortiert `sort_and_move.py` wie gewohnt nach `/SortmyPDFs/<Empfaenger>/<Firma>/`.
 
+## Automatikbetrieb (stündlich) mit Logs (systemd --user)
+
+Es gibt ein Runner-Script im Repo:
+- `run_hourly.sh`
+  - macht: `imap_ingest.py --delete` (UNSEEN + nach Erfolg löschen) und danach `sort_and_move.py --apply`
+  - schreibt pro Lauf ein Log nach: `logs/hourly-<UTC-Timestamp>.log`
+
+### systemd Unit Dateien
+Lege folgende Dateien an:
+
+`~/.config/systemd/user/sortmypdfs.service`
+```ini
+[Unit]
+Description=SortmyPDFs hourly ingest+sort (IMAP -> OneDrive -> rename/move)
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/tim/.openclaw/workspace/SortmyPDFs
+ExecStart=/home/tim/.openclaw/workspace/SortmyPDFs/run_hourly.sh
+```
+
+`~/.config/systemd/user/sortmypdfs.timer`
+```ini
+[Unit]
+Description=Run SortmyPDFs every hour
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target
+```
+
+Aktivieren:
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now sortmypdfs.timer
+```
+
+Status/Debug:
+```bash
+systemctl --user status sortmypdfs.timer
+systemctl --user -u sortmypdfs.service --no-pager -n 200
+ls -lt /home/tim/.openclaw/workspace/SortmyPDFs/logs | head
+```
+
 ### Konfiguration (`.env`)
 Benötigte Variablen:
 - `IMAP_HOST`
