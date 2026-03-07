@@ -244,7 +244,8 @@ def main():
             any_changes = True
 
             if args.delete and success:
-                imap.uid("store", uid, "+FLAGS", "(\\\\Deleted)")
+                # imaplib expects the IMAP system flag with a single backslash: \Deleted
+                imap.uid("store", uid, "+FLAGS", "(\\Deleted)")
                 deleted += 1
 
         if args.delete and deleted:
