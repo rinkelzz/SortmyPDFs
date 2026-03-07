@@ -299,14 +299,35 @@ def ensure_folder(token, path: str):
 
 
 def move_and_rename(token, item_id: str, dest_folder_id: str, new_name: str):
+    """Move an item to dest_folder_id and rename it.
+
+    If the destination already has a file with the same name, OneDrive returns 409.
+    In that case, retry with a numbered suffix.
+    """
     url = f"https://graph.microsoft.com/v1.0/me/drive/items/{item_id}"
-    payload = {
-        "name": new_name,
-        "parentReference": {"id": dest_folder_id},
-    }
-    res = graph("PATCH", url, token, json=payload)
-    res.raise_for_status()
-    return res.json()
+
+    base, ext = os.path.splitext(new_name)
+    ext = ext or ".pdf"
+
+    last_res = None
+    for i in range(0, 20):
+        candidate = f"{base}{ext}" if i == 0 else f"{base}_{i+1}{ext}"
+        payload = {
+            "name": candidate,
+            "parentReference": {"id": dest_folder_id},
+        }
+        res = graph("PATCH", url, token, json=payload)
+        last_res = res
+        if res.status_code in (200, 201):
+            return res.json()
+        if res.status_code == 409:
+            continue
+        res.raise_for_status()
+
+    # exhausted retries
+    if last_res is not None:
+        last_res.raise_for_status()
+    raise RuntimeError("move_and_rename failed without response")
 
 
 def main(apply: bool = False):
