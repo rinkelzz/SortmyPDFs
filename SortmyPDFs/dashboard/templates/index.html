@@ -88,14 +88,21 @@
         <form method="post" action="/action/merge/apply" style="margin-top: 10px;">
           <div class="muted">Vorschläge: <b>{{ merge_proposals|length }}</b> Gruppen. Wähle aus, was zusammengeführt werden soll:</div>
           {% for p in merge_proposals[:100] %}
+            {% set gid = 'grp_' ~ loop.index %}
             <div class="card" style="margin-top: 10px;">
               <div><b>{{ p.recipient }}</b> – Key: <code>{{ p.key }}</code></div>
               <div class="muted">Ziel: <code>{{ p.target.name }}</code></div>
+              <div style="margin-top: 6px;">
+                <label class="muted">
+                  <input type="checkbox" class="select-all" data-group="{{ gid }}" />
+                  Alle in dieser Gruppe auswählen
+                </label>
+              </div>
               <ul>
                 {% for s in p.sources %}
                   <li>
                     <label>
-                      <input type="checkbox" name="move" value="{{ s.id }}->{{ p.target.id }}" />
+                      <input type="checkbox" class="merge-item" data-group="{{ gid }}" name="move" value="{{ s.id }}->{{ p.target.id }}" />
                       <code>{{ s.name }}</code> → <code>{{ p.target.name }}</code>
                     </label>
                   </li>
@@ -103,6 +110,18 @@
               </ul>
             </div>
           {% endfor %}
+
+          <script>
+            // group select-all toggles
+            document.querySelectorAll('input.select-all').forEach(function(allBox) {
+              allBox.addEventListener('change', function() {
+                var gid = allBox.getAttribute('data-group');
+                document.querySelectorAll('input.merge-item[data-group="' + gid + '"]').forEach(function(cb) {
+                  cb.checked = allBox.checked;
+                });
+              });
+            });
+          </script>
           {% if merge_proposals|length > 100 %}
             <div class="muted">(Liste gekürzt auf 100 Gruppen)</div>
           {% endif %}

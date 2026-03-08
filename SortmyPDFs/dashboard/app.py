@@ -42,6 +42,9 @@ DASH_PASS = os.getenv("SORTMYPDFS_DASH_PASS")
 # Buttons / control endpoints
 ENABLE_BUTTONS = os.getenv("SORTMYPDFS_DASH_BUTTONS", "0") == "1"
 
+# Safety: cap how many items a merge operation may move per click
+MERGE_MAX_ITEMS = int(os.getenv("SORTMYPDFS_DASH_MERGE_MAX_ITEMS", "200"))
+
 
 @dataclass
 class LogSummary:
@@ -669,14 +672,37 @@ async def action_merge_apply(request: Request):
         _set_last("merge apply", False, "No folders selected")
         return RedirectResponse(url="/", status_code=303)
 
-    moved_items = 0
-    errs: list[str] = []
-
+    # Safety preflight: count how many children would be moved
+    counts: list[tuple[str, int]] = []
+    total = 0
+    parsed: list[tuple[str, str]] = []
     for spec in moves:
         if "->" not in spec:
             continue
         source_id, target_id = spec.split("->", 1)
+        parsed.append((source_id, target_id))
+        try:
+            children = _list_children_by_id(headers, source_id, select="id")
+            n = len(children)
+        except Exception:
+            n = 0
+        counts.append((source_id, n))
+        total += n
 
+    if total > MERGE_MAX_ITEMS:
+        detail = (
+            f"Refusing to move {total} items (limit={MERGE_MAX_ITEMS}).\n"
+            "Select fewer folders, or raise SORTMYPDFS_DASH_MERGE_MAX_ITEMS in ~/.config/sortmypdfs-dashboard.env and restart the service.\n"
+            "Counts per selected source folder (id: count):\n"
+            + "\n".join([f"- {sid}: {n}" for sid, n in counts[:20]])
+        )
+        _set_last("merge apply", False, detail)
+        return RedirectResponse(url="/", status_code=303)
+
+    moved_items = 0
+    errs: list[str] = []
+
+    for source_id, target_id in parsed:
         try:
             children = _list_children_by_id(headers, source_id, select="id,name,folder,file")
         except Exception as e:
@@ -690,7 +716,12 @@ async def action_merge_apply(request: Request):
             url = f"https://graph.microsoft.com/v1.0/me/drive/items/{cid}"
             payload = {"parentReference": {"id": target_id}}
             try:
-                res = requests.patch(url, headers={**headers, "Content-Type": "application/json"}, json=payload, timeout=60)
+                res = requests.patch(
+                    url,
+                    headers={**headers, "Content-Type": "application/json"},
+                    json=payload,
+                    timeout=60,
+                )
                 if res.status_code in (200, 201):
                     moved_items += 1
                 else:
