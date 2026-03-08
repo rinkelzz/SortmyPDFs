@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1>Leere Ordner löschen</h1>
+  <div class="card">
+    <div class="muted">Scannt live in OneDrive nach leeren Ordnern unter <code>/SortmyPDFs</code> und löscht nur nach Bestätigung.</div>
+    <form method="post" action="/action/empty-folders/scan" style="margin-top: 8px;">
+      <button type="submit">Scan: leere Ordner finden</button>
+      {% if empty_scan_running %}
+        <span class="muted" style="margin-left: 10px;">Scan läuft… Seite in ein paar Sekunden neu laden.</span>
+      {% endif %}
+    </form>
+
+    {% if empty_folders and empty_folders|length > 0 %}
+      <form method="post" action="/action/empty-folders/delete" style="margin-top: 10px;">
+        <div class="muted">Gefunden: <b>{{ empty_folders|length }}</b> leere Ordner. Wähle aus und bestätige Löschen:</div>
+        <ul>
+          {% for f in empty_folders[:200] %}
+            <li>
+              <label>
+                <input type="checkbox" name="folder_id" value="{{ f.id }}" />
+                <code>{{ f.path }}</code>
+              </label>
+            </li>
+          {% endfor %}
+        </ul>
+        {% if empty_folders|length > 200 %}
+          <div class="muted">(Liste gekürzt auf 200 Einträge)</div>
+        {% endif %}
+        <button type="submit" style="margin-top: 8px;">Delete selected</button>
+      </form>
+    {% else %}
+      <div class="muted" style="margin-top: 10px;">Noch keine Scan-Ergebnisse (oder keine leeren Ordner gefunden).</div>
+    {% endif %}
+  </div>
+{% endblock %}

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1>Firmen-Aliase</h1>
+  <div class="card">
+    <div class="muted">Firmen "anlegen" (kanonischer Ordnername) und Alias-Strings hinzufügen. Matching ist: <b>Text enthält</b> (case-insensitive).</div>
+
+    <form method="post" action="/action/aliases/add" style="margin-top: 8px;">
+      <div class="muted">Kanonischer Name (Ordner):</div>
+      <input type="text" name="canonical" placeholder="z.B. Volkswagen" style="width: 420px;" />
+      <div class="muted" style="margin-top: 6px;">Aliase (eine Zeile pro Alias):</div>
+      <textarea name="aliases" rows="4" style="width: 100%;" placeholder="volkswagen leasing\nvwfs\nvolkswagen bank"></textarea>
+      <button type="submit" style="margin-top: 6px;">Speichern</button>
+    </form>
+
+    <h2 style="margin-top: 14px;">Vorhandene Aliase</h2>
+    {% if aliases and aliases|length > 0 %}
+      {% for canon, als in aliases.items() %}
+        <div class="card" style="margin-top: 10px;">
+          <div><b>{{ canon }}</b>
+            <form method="post" action="/action/aliases/delete" style="display:inline; margin-left: 8px;">
+              <input type="hidden" name="canonical" value="{{ canon }}" />
+              <button type="submit">Firma löschen</button>
+            </form>
+          </div>
+          {% if als %}
+            <ul>
+              {% for a in als %}
+                <li>
+                  <code>{{ a }}</code>
+                  <form method="post" action="/action/aliases/delete" style="display:inline; margin-left: 8px;">
+                    <input type="hidden" name="canonical" value="{{ canon }}" />
+                    <input type="hidden" name="alias" value="{{ a }}" />
+                    <button type="submit">Alias löschen</button>
+                  </form>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <div class="muted">(keine Aliase)</div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="muted" style="margin-top: 8px;">Noch keine Aliase hinterlegt.</div>
+    {% endif %}
+  </div>
+{% endblock %}

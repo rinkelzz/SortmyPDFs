@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1>Übersicht</h1>
+  <div class="muted">Stand: {{ now.isoformat() }}</div>
+
+  <div class="grid" style="margin-top: 12px;">
+    <div class="card">
+      <div class="muted">Gesamt verarbeitet (state.json)</div>
+      <div class="kpi">{{ processed_count }}</div>
+    </div>
+    <div class="card">
+      <div class="muted">Sonstige (Anzahl Dest-Pfade)</div>
+      <div class="kpi">{{ sonstige_count }}</div>
+    </div>
+    <div class="card">
+      <div class="muted">IMAP State</div>
+      <div style="margin-top: 6px; font-size: 14px;">
+        UIDs: <b>{{ imap_uid_count }}</b><br/>
+        Hashes: <b>{{ imap_hash_count }}</b>
+      </div>
+    </div>
+    <div class="card">
+      <div class="muted">Warteschlange (OneDrive {{ 'live' if live_inbox_enabled else '—' }})</div>
+      {% if inbox_pdf_count is not none %}
+        <div class="kpi">{{ inbox_pdf_count }}</div>
+      {% else %}
+        <div style="margin-top: 6px;" class="muted">{{ inbox_warn }}</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if buttons_enabled %}
+    <h2>Aktionen</h2>
+    <div class="card">
+      <form method="post" action="/action/run" style="display:inline;">
+        <button type="submit">Jetzt Lauf starten (run_hourly.sh)</button>
+      </form>
+      <form method="post" action="/action/timer/enable" style="display:inline; margin-left: 8px;">
+        <button type="submit">Timer an</button>
+      </form>
+      <form method="post" action="/action/timer/disable" style="display:inline; margin-left: 8px;">
+        <button type="submit">Timer aus</button>
+      </form>
+      <div class="muted" style="margin-top: 8px;">
+        Tipp: Wenn du den Dashboard-Host ins Heimnetz bindest, setz unbedingt Basic Auth (Env: <code>SORTMYPDFS_DASH_USER</code>/<code>SORTMYPDFS_DASH_PASS</code>).
+      </div>
+    </div>
+
+    <h2>Letzte Aktion</h2>
+    <div class="card">
+      {% if last_action.ts %}
+        <div><b>{{ last_action.action }}</b></div>
+        <div class="muted">{{ last_action.ts.isoformat() }}</div>
+        <div style="margin-top: 8px;" class="{{ 'ok' if last_action.ok else 'err' }}">
+          {{ 'OK' if last_action.ok else 'FEHLER' }}
+        </div>
+        {% if last_action.detail %}
+          <pre style="white-space: pre-wrap; font-size: 12px; margin-top: 8px;">{{ last_action.detail }}</pre>
+        {% endif %}
+      {% else %}
+        <div class="muted">Noch keine Aktion ausgelöst.</div>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  <h2>Top Firmen (aus Zielpfad)</h2>
+  {% if top_firms %}
+    <table>
+      <thead><tr><th>Firma</th><th>Anzahl</th></tr></thead>
+      <tbody>
+      {% for firm, cnt in top_firms %}
+        <tr><td>{{ firm }}</td><td>{{ cnt }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="muted">Keine Daten.</div>
+  {% endif %}
+
+  <h2>Warteschlange – letzte PDFs</h2>
+  {% if inbox_items %}
+    <ul>
+      {% for it in inbox_items %}
+        <li><code>{{ it.get('name') }}</code> <span class="muted">created={{ it.get('createdDateTime') }}</span></li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <div class="muted">(nur verfügbar, wenn Live-Inbox aktiviert ist)</div>
+  {% endif %}
+
+  <h2>Letzte Läufe (logs/hourly-*.log)</h2>
+  {% if recent_logs %}
+    <table>
+      <thead><tr><th>Log</th><th>Zeit</th><th>ERROR</th><th>WARN</th><th>INFO</th></tr></thead>
+      <tbody>
+      {% for lg in recent_logs %}
+        <tr>
+          <td><code>{{ lg.path }}</code></td>
+          <td class="muted">{{ lg.ts.isoformat() if lg.ts else '' }}</td>
+          <td class="{{ 'err' if lg.level_counts.get('ERROR',0) else 'ok' }}">{{ lg.level_counts.get('ERROR',0) }}</td>
+          <td>{{ lg.level_counts.get('WARN',0) }}</td>
+          <td>{{ lg.level_counts.get('INFO',0) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+
+    <h2>Fehler (aus den letzten Logs, gekürzt)</h2>
+    {% set any_errors = false %}
+    {% for lg in recent_logs %}
+      {% if lg.error_lines %}
+        {% set any_errors = true %}
+        <div class="card" style="margin-top: 10px;">
+          <div><code>{{ lg.path }}</code></div>
+          <ul>
+            {% for line in lg.error_lines %}
+              <li class="err"><code>{{ line }}</code></li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+    {% endfor %}
+    {% if not any_errors %}
+      <div class="muted">Keine ERROR-Zeilen gefunden.</div>
+    {% endif %}
+
+  {% else %}
+    <div class="muted">Keine Logs gefunden.</div>
+  {% endif %}
+{% endblock %}

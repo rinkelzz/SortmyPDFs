@@ -384,10 +384,16 @@ def _start_runner_async() -> tuple[bool, str]:
         return False, str(e)
 
 
-@app.get("/", response_class=HTMLResponse)
-def index(request: Request):
-    _require_auth(request)
+def _base_ctx(request: Request) -> dict[str, Any]:
+    return {
+        "request": request,
+        "now": _utc_now(),
+        "buttons_enabled": ENABLE_BUTTONS,
+        "last_action": LAST_ACTION,
+    }
 
+
+def _load_state_metrics() -> dict[str, Any]:
     state = _load_json(STATE_PATH)
     processed = state.get("processed", {}) if isinstance(state, dict) else {}
 
@@ -395,22 +401,38 @@ def index(request: Request):
     sonstige_count = _count_sonstige(processed) if isinstance(processed, dict) else 0
     firms = _top_firms(processed, limit=10) if isinstance(processed, dict) else []
 
+    tree = _build_state_tree(processed) if isinstance(processed, dict) else {"name": "root", "children": {}, "files": []}
+
+    return {
+        "state": state,
+        "processed": processed,
+        "processed_count": processed_count,
+        "sonstige_count": sonstige_count,
+        "top_firms": firms,
+        "state_tree": tree,
+    }
+
+
+@app.get("/", response_class=HTMLResponse)
+def overview(request: Request):
+    _require_auth(request)
+
+    m = _load_state_metrics()
+
     state_imap = _load_json(STATE_IMAP_PATH)
     imap_hashes = state_imap.get("hashes", {}) if isinstance(state_imap, dict) else {}
     imap_uids = state_imap.get("uids", {}) if isinstance(state_imap, dict) else {}
 
     recent_logs = _list_recent_logs(limit=12)
-
     inbox_pdf_count, inbox_items, inbox_warn = _onedrive_inbox_live(limit=10)
 
-    tree = _build_state_tree(processed) if isinstance(processed, dict) else {"name": "root", "children": {}, "files": []}
-
     ctx = {
-        "request": request,
-        "now": _utc_now(),
-        "processed_count": processed_count,
-        "sonstige_count": sonstige_count,
-        "top_firms": firms,
+        **_base_ctx(request),
+        "title": "SortmyPDFs – Übersicht",
+        "active": "overview",
+        "processed_count": m["processed_count"],
+        "sonstige_count": m["sonstige_count"],
+        "top_firms": m["top_firms"],
         "imap_uid_count": len(imap_uids) if isinstance(imap_uids, dict) else None,
         "imap_hash_count": len(imap_hashes) if isinstance(imap_hashes, dict) else None,
         "recent_logs": recent_logs,
@@ -418,16 +440,59 @@ def index(request: Request):
         "inbox_items": inbox_items,
         "inbox_warn": inbox_warn,
         "live_inbox_enabled": ENABLE_LIVE_INBOX,
-        "buttons_enabled": ENABLE_BUTTONS,
-        "last_action": LAST_ACTION,
-        "state_tree": tree,
-        "empty_folders": EMPTY_FOLDERS,
-        "empty_scan_running": EMPTY_SCAN_RUNNING,
-        "merge_proposals": MERGE_PROPOSALS,
-        "aliases": _load_aliases(),
     }
 
-    return TEMPLATES.TemplateResponse("index.html", ctx)
+    return TEMPLATES.TemplateResponse("overview.html", ctx)
+
+
+@app.get("/state", response_class=HTMLResponse)
+def state_browser(request: Request):
+    _require_auth(request)
+    m = _load_state_metrics()
+    ctx = {
+        **_base_ctx(request),
+        "title": "SortmyPDFs – State Browser",
+        "active": "state",
+        "state_tree": m["state_tree"],
+    }
+    return TEMPLATES.TemplateResponse("state.html", ctx)
+
+
+@app.get("/merge", response_class=HTMLResponse)
+def merge_page(request: Request):
+    _require_auth(request)
+    ctx = {
+        **_base_ctx(request),
+        "title": "SortmyPDFs – Merges",
+        "active": "merge",
+        "merge_proposals": MERGE_PROPOSALS,
+    }
+    return TEMPLATES.TemplateResponse("merge.html", ctx)
+
+
+@app.get("/empty-folders", response_class=HTMLResponse)
+def empty_page(request: Request):
+    _require_auth(request)
+    ctx = {
+        **_base_ctx(request),
+        "title": "SortmyPDFs – Leere Ordner",
+        "active": "empty",
+        "empty_folders": EMPTY_FOLDERS,
+        "empty_scan_running": EMPTY_SCAN_RUNNING,
+    }
+    return TEMPLATES.TemplateResponse("empty_folders.html", ctx)
+
+
+@app.get("/aliases", response_class=HTMLResponse)
+def aliases_page(request: Request):
+    _require_auth(request)
+    ctx = {
+        **_base_ctx(request),
+        "title": "SortmyPDFs – Aliase",
+        "active": "aliases",
+        "aliases": _load_aliases(),
+    }
+    return TEMPLATES.TemplateResponse("aliases.html", ctx)
 
 
 @app.post("/action/run")
