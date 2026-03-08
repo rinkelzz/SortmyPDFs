@@ -30,6 +30,7 @@ TEMPLATES = Jinja2Templates(directory=str(DASH / "templates"))
 
 STATE_PATH = BASE / "state.json"
 STATE_IMAP_PATH = BASE / "state_imap.json"
+ALIASES_PATH = BASE / "firma_aliases.json"
 LOG_DIR = BASE / "logs"
 
 # Feature flag: enable OneDrive live query for inbox count/list
@@ -87,6 +88,22 @@ def _load_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _load_aliases() -> dict[str, list[str]]:
+    data = _load_json(ALIASES_PATH)
+    out: dict[str, list[str]] = {}
+    if isinstance(data, dict):
+        for k, v in data.items():
+            if not isinstance(k, str):
+                continue
+            if isinstance(v, list):
+                out[k] = [str(x) for x in v if str(x).strip()]
+    return out
+
+
+def _save_aliases(d: dict[str, list[str]]) -> None:
+    ALIASES_PATH.write_text(json.dumps(d, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
 def _count_sonstige(processed: dict[str, Any]) -> int:
@@ -405,6 +422,7 @@ def index(request: Request):
         "state_tree": tree,
         "empty_folders": EMPTY_FOLDERS,
         "merge_proposals": MERGE_PROPOSALS,
+        "aliases": _load_aliases(),
     }
 
     return TEMPLATES.TemplateResponse("index.html", ctx)
@@ -687,6 +705,73 @@ def action_merge_scan(request: Request):
 
     ok, detail = _scan_merge_proposals()
     _set_last("merge scan", ok, detail)
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/action/aliases/add")
+async def action_alias_add(request: Request):
+    _require_auth(request)
+    if not ENABLE_BUTTONS:
+        raise HTTPException(status_code=404)
+
+    form: FormData = await request.form()
+    canonical = (form.get("canonical") or "").strip()
+    aliases_raw = (form.get("aliases") or "").strip()
+
+    if not canonical:
+        _set_last("alias add", False, "Missing canonical name")
+        return RedirectResponse(url="/", status_code=303)
+
+    aliases = [a.strip() for a in aliases_raw.splitlines() if a.strip()]
+    if not aliases:
+        _set_last("alias add", False, "No aliases provided")
+        return RedirectResponse(url="/", status_code=303)
+
+    d = _load_aliases()
+    d.setdefault(canonical, [])
+    # de-dup (casefold)
+    existing_cf = {x.casefold() for x in d[canonical]}
+    for a in aliases:
+        if a.casefold() not in existing_cf:
+            d[canonical].append(a)
+            existing_cf.add(a.casefold())
+
+    # sort by length then alpha
+    d[canonical] = sorted(d[canonical], key=lambda s: (len(s), s.casefold()))
+    _save_aliases(d)
+    _set_last("alias add", True, f"Saved {len(aliases)} aliases under '{canonical}'.")
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/action/aliases/delete")
+async def action_alias_delete(request: Request):
+    _require_auth(request)
+    if not ENABLE_BUTTONS:
+        raise HTTPException(status_code=404)
+
+    form: FormData = await request.form()
+    canonical = (form.get("canonical") or "").strip()
+    alias = (form.get("alias") or "").strip()
+
+    d = _load_aliases()
+    if canonical not in d:
+        _set_last("alias delete", False, "Canonical not found")
+        return RedirectResponse(url="/", status_code=303)
+
+    if alias:
+        before = len(d[canonical])
+        d[canonical] = [a for a in d[canonical] if a != alias]
+        after = len(d[canonical])
+        if after == 0:
+            d.pop(canonical, None)
+        _save_aliases(d)
+        _set_last("alias delete", True, f"Removed {before-after} alias(es).")
+        return RedirectResponse(url="/", status_code=303)
+
+    # if alias is empty, delete whole canonical block
+    d.pop(canonical, None)
+    _save_aliases(d)
+    _set_last("alias delete", True, f"Removed '{canonical}'")
     return RedirectResponse(url="/", status_code=303)
 
 

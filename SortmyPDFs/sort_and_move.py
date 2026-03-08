@@ -23,6 +23,7 @@ TARGET_ROOT = os.getenv("ONEDRIVE_TARGET_ROOT", "SortmyPDFs")
 STATE_PATH = BASE / "state.json"
 TOKEN_CACHE_PATH = BASE / ".token_cache.bin"
 TMP_DIR = BASE / ".tmp"
+ALIASES_PATH = BASE / "firma_aliases.json"
 
 SESSION = requests.Session()
 
@@ -237,6 +238,23 @@ def firma_key(name: str) -> str:
     return " ".join(words)
 
 
+def load_aliases() -> dict[str, list[str]]:
+    try:
+        if ALIASES_PATH.exists():
+            data = json.loads(ALIASES_PATH.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                out: dict[str, list[str]] = {}
+                for k, v in data.items():
+                    if not isinstance(k, str):
+                        continue
+                    if isinstance(v, list):
+                        out[k] = [str(x) for x in v if str(x).strip()]
+                return out
+    except Exception:
+        pass
+    return {}
+
+
 def pick_firma(text: str, fallback_name: str) -> str:
     # Always prefer HDI if present (your rule)
     if re.search(r"\bHDI\b", text):
@@ -244,7 +262,15 @@ def pick_firma(text: str, fallback_name: str) -> str:
     if "hdi" in fallback_name.lower():
         return "HDI"
 
-    # High-confidence special cases
+    # User-defined aliases: if any alias substring occurs, pick canonical company name.
+    t_cf = (text or "").casefold()
+    for canonical, aliases in load_aliases().items():
+        for a in aliases:
+            a_cf = (a or "").casefold().strip()
+            if a_cf and a_cf in t_cf:
+                return canonical
+
+    # High-confidence special cases (kept for backwards compatibility)
     if re.search(r"deutsche\s+rentenversicherung", text, flags=re.I):
         # Often appears as "Deutsche Rentenversicherung Bund"
         if re.search(r"deutsche\s+rentenversicherung\s+bund", text, flags=re.I):

@@ -95,6 +95,7 @@ Es zeigt u.a.:
 - „Sonstige“-Anteil
 - letzte Runs + Fehler (aus `logs/hourly-*.log`)
 - Buttons: „Run now“, „Timer an/aus“, **Reprocess by OneDrive Item-ID**
+- Firmen-Aliase anlegen (Text-enthält Matching) über `firma_aliases.json` / Dashboard
 
 ### Start (lokal)
 - `cd /home/tim/.openclaw/workspace/SortmyPDFs`
