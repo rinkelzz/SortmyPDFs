@@ -28,21 +28,40 @@
     }
     .nav a {
       text-decoration:none; color:#222; padding: 6px 10px; border-radius: 8px;
+      display: inline-flex; gap: 6px; align-items: center;
     }
     .nav a.active { background: #111; color: #fff; }
     .nav .brand { font-weight: 700; margin-right: 10px; }
     .spacer { flex: 1; }
+    .badge {
+      display:inline-block; padding: 2px 7px; border-radius: 999px;
+      font-size: 12px; line-height: 16px; background: #eaeaea; color:#111;
+    }
+    .badge.err { background: #ffe1e1; color: #8a0000; }
+    .badge.ok { background: #dff7ea; color: #065f3b; }
+    .btn {
+      border: 1px solid #ddd; background: #fff; padding: 6px 10px; border-radius: 8px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
   <div class="nav">
     <div class="brand">SortmyPDFs</div>
-    <a href="/" class="{{ 'active' if active=='overview' else '' }}">Übersicht</a>
+    <a href="/" class="{{ 'active' if active=='overview' else '' }}">Übersicht
+      {% if nav_errors is not none and nav_errors|int > 0 %}
+        <span class="badge err">{{ nav_errors }} ERR</span>
+      {% endif %}
+      {% if nav_inbox is not none %}
+        <span class="badge">Q {{ nav_inbox }}</span>
+      {% endif %}
+    </a>
     <a href="/state" class="{{ 'active' if active=='state' else '' }}">State Browser</a>
     <a href="/merge" class="{{ 'active' if active=='merge' else '' }}">Merges</a>
     <a href="/empty-folders" class="{{ 'active' if active=='empty' else '' }}">Leere Ordner</a>
     <a href="/aliases" class="{{ 'active' if active=='aliases' else '' }}">Aliase</a>
     <div class="spacer"></div>
+    <button class="btn" onclick="location.reload()">Refresh</button>
     <div class="muted">{{ now.isoformat() if now else '' }}</div>
   </div>
 

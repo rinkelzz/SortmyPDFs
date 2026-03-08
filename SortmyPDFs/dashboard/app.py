@@ -384,12 +384,36 @@ def _start_runner_async() -> tuple[bool, str]:
         return False, str(e)
 
 
+def _nav_stats() -> dict[str, Any]:
+    """Small stats for the navbar (best-effort, should not break page render)."""
+
+    stats: dict[str, Any] = {"nav_inbox": None, "nav_errors": None}
+
+    # Inbox (only if live mode enabled)
+    try:
+        c, _items, _warn = _onedrive_inbox_live(limit=0)
+        stats["nav_inbox"] = c
+    except Exception:
+        pass
+
+    # Errors in recent logs
+    try:
+        recent = _list_recent_logs(limit=6)
+        err_runs = sum(1 for lg in recent if (lg.level_counts.get("ERROR", 0) or 0) > 0)
+        stats["nav_errors"] = err_runs
+    except Exception:
+        pass
+
+    return stats
+
+
 def _base_ctx(request: Request) -> dict[str, Any]:
     return {
         "request": request,
         "now": _utc_now(),
         "buttons_enabled": ENABLE_BUTTONS,
         "last_action": LAST_ACTION,
+        **_nav_stats(),
     }
 
 
