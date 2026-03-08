@@ -76,6 +76,41 @@
     <div class="muted">(nur verfügbar, wenn Live-Inbox aktiviert ist)</div>
   {% endif %}
 
+  {% if buttons_enabled %}
+    <h2>State Browser (aus state.json)</h2>
+    <div class="muted">Baumansicht aus den zuletzt verarbeiteten Dateien. Reprocess nutzt die gespeicherte OneDrive Item-ID.</div>
+
+    {% macro render_node(node) -%}
+      {# node.children is a dict #}
+      {% for name, ch in node.children.items() %}
+        <details style="margin-left: 14px;">
+          <summary><code>{{ name }}</code> <span class="muted">({{ ch.files|length }} files, {{ ch.children|length }} folders)</span></summary>
+
+          {% if ch.files %}
+            <ul>
+              {% for f in ch.files %}
+                <li>
+                  <code>{{ f.new or f.src }}</code>
+                  <span class="muted">(src={{ f.src }})</span>
+                  <form method="post" action="/action/reprocess" style="display:inline; margin-left: 8px;">
+                    <input type="hidden" name="item_id" value="{{ f.item_id }}" />
+                    <button type="submit">Reprocess</button>
+                  </form>
+                </li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+
+          {{ render_node(ch) }}
+        </details>
+      {% endfor %}
+    {%- endmacro %}
+
+    <div class="card" style="margin-top: 10px;">
+      {{ render_node(state_tree) }}
+    </div>
+  {% endif %}
+
   <h2>Letzte Läufe (logs/hourly-*.log)</h2>
   {% if recent_logs %}
     <table>

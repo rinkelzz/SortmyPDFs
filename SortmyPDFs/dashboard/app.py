@@ -97,13 +97,53 @@ def _count_sonstige(processed: dict[str, Any]) -> int:
 
 
 def _top_firms(processed: dict[str, Any], limit: int = 10) -> list[tuple[str, int]]:
-    counts: dict[str, int] = {}
+    counts: dict[str, Any] = {}
     for _k, v in processed.items():
         dest = str(v.get("dest", ""))
         parts = dest.split("/")
         firm = parts[2] if len(parts) >= 3 else "(unknown)"
         counts[firm] = counts.get(firm, 0) + 1
     return sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:limit]
+
+
+def _build_state_tree(processed: dict[str, Any]) -> dict[str, Any]:
+    """Build a nested tree from state.json entries.
+
+    Structure:
+      {"name": "root", "children": {folder: node}, "files": [fileEntry...]}
+
+    fileEntry includes item_id and meta fields.
+    """
+
+    root: dict[str, Any] = {"name": "root", "children": {}, "files": []}
+
+    for item_id, meta in processed.items():
+        dest = str(meta.get("dest", ""))
+        # normalize split
+        parts = [p for p in dest.split("/") if p]
+        node = root
+        for p in parts:
+            node = node["children"].setdefault(p, {"name": p, "children": {}, "files": []})
+        node["files"].append(
+            {
+                "item_id": item_id,
+                "src": meta.get("src"),
+                "new": meta.get("new"),
+                "dest": meta.get("dest"),
+                "ts": meta.get("ts"),
+            }
+        )
+
+    def sort_node(n: dict[str, Any]) -> None:
+        n["files"].sort(key=lambda f: str(f.get("new") or ""))
+        # sort children by name
+        children_items = sorted(n["children"].items(), key=lambda kv: kv[0].lower())
+        n["children"] = {k: v for k, v in children_items}
+        for ch in n["children"].values():
+            sort_node(ch)
+
+    sort_node(root)
+    return root
 
 
 LOG_TS_RE = re.compile(r"hourly-(\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2}Z)\\.log$")
@@ -278,6 +318,8 @@ def index(request: Request):
 
     inbox_pdf_count, inbox_items, inbox_warn = _onedrive_inbox_live(limit=10)
 
+    tree = _build_state_tree(processed) if isinstance(processed, dict) else {"name": "root", "children": {}, "files": []}
+
     ctx = {
         "request": request,
         "now": _utc_now(),
@@ -293,6 +335,7 @@ def index(request: Request):
         "live_inbox_enabled": ENABLE_LIVE_INBOX,
         "buttons_enabled": ENABLE_BUTTONS,
         "last_action": LAST_ACTION,
+        "state_tree": tree,
     }
 
     return TEMPLATES.TemplateResponse("index.html", ctx)
