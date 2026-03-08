@@ -128,6 +128,14 @@
       <form method="post" action="/action/timer/disable" style="display:inline; margin-left: 8px;">
         <button type="submit">Timer aus</button>
       </form>
+
+      <div style="margin-top: 10px;"></div>
+      <form method="post" action="/action/reprocess" style="display:inline;">
+        <label class="muted">Reprocess OneDrive Item-ID:</label>
+        <input type="text" name="item_id" placeholder="4955...!s..." style="width: 340px;" />
+        <button type="submit">Reprocess</button>
+      </form>
+
       <div class="muted" style="margin-top: 8px;">
         Tipp: Wenn du den Dashboard-Host ins Heimnetz bindest, setz unbedingt Basic Auth (Env: <code>SORTMYPDFS_DASH_USER</code>/<code>SORTMYPDFS_DASH_PASS</code>).
       </div>

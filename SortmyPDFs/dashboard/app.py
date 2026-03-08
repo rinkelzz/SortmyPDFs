@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
+from starlette.datastructures import FormData
 
 # Optional (only used if OneDrive live inbox is enabled)
 try:
@@ -320,4 +321,23 @@ def action_timer(mode: str, request: Request):
     cmd = ["systemctl", "--user", mode, "--now", "sortmypdfs.timer"]
     ok, out = _run_cmd(cmd, cwd=BASE, timeout=30)
     _set_last(f"systemctl --user {mode} --now sortmypdfs.timer", ok, out)
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/action/reprocess")
+async def action_reprocess(request: Request):
+    _require_auth(request)
+    if not ENABLE_BUTTONS:
+        raise HTTPException(status_code=404)
+
+    form: FormData = await request.form()
+    item_id = (form.get("item_id") or "").strip()
+    if not item_id:
+        _set_last("reprocess", False, "Missing item_id")
+        return RedirectResponse(url="/", status_code=303)
+
+    py = BASE / ".venv" / "bin" / "python"
+    cmd = [str(py), "sort_and_move.py", "--apply", "--reprocess", item_id]
+    ok, out = _run_cmd(cmd, cwd=BASE, timeout=180)
+    _set_last(f"reprocess {item_id}", ok, out)
     return RedirectResponse(url="/", status_code=303)

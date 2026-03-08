@@ -94,6 +94,7 @@ Es zeigt u.a.:
 - Gesamt verarbeitet (`state.json`)
 - „Sonstige“-Anteil
 - letzte Runs + Fehler (aus `logs/hourly-*.log`)
+- Buttons: „Run now“, „Timer an/aus“, **Reprocess by OneDrive Item-ID**
 
 ### Start (lokal)
 - `cd /home/tim/.openclaw/workspace/SortmyPDFs`

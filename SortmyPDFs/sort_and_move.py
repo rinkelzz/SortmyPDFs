@@ -333,88 +333,113 @@ def move_and_rename(token, item_id: str, dest_folder_id: str, new_name: str):
     raise RuntimeError("move_and_rename failed without response")
 
 
-def main(apply: bool = False):
+def get_item(token: str, item_id: str) -> dict:
+    url = (
+        f"https://graph.microsoft.com/v1.0/me/drive/items/{item_id}"
+        "?$select=id,name,createdDateTime,lastModifiedDateTime,file,parentReference"
+    )
+    res = graph("GET", url, token)
+    res.raise_for_status()
+    return res.json()
+
+
+def process_item(token: str, state: dict, it: dict, apply: bool) -> None:
+    item_id = it["id"]
+    name = it.get("name") or item_id
+    created = it.get("createdDateTime") or ""
+
+    # Note: we intentionally do NOT skip already-processed items here;
+    # reprocess mode wants to re-run classification.
+
+    local_pdf = TMP_DIR / name
+    try:
+        if local_pdf.exists():
+            local_pdf.unlink()
+        download_item(token, item_id, local_pdf)
+        text = ocr_first_page(local_pdf)
+
+        recipient = pick_recipient(text, name)
+        firma = pick_firma(text, name)
+        doc_type = pick_doc_type(text, name)
+        date = pick_date(text, created, name)
+
+        # sanitize company/doc type for filename
+        firma_fn = re.sub(r"\s+", " ", firma).strip()
+        firma_fn = re.sub(r"[^A-Za-z0-9ÄÖÜäöüß \-_.()]+", "", firma_fn)
+        doc_fn = re.sub(r"\s+", " ", doc_type).strip()
+        doc_fn = re.sub(r"[^A-Za-z0-9ÄÖÜäöüß \-_.()]+", "", doc_fn)
+
+        new_name = f"{date}_{firma_fn}_{doc_fn}.pdf"
+        new_name = re.sub(r"\s+", " ", new_name).strip()
+
+        # Normalize some common company names (avoid OCR quirks)
+        if "volkswagen" in firma.lower():
+            firma = "Volkswagen AG"
+
+        # Folder routing rules
+        if doc_type == "Kaufvertrag":
+            # Per your preference: keep contracts under the company folder
+            dest_path = f"{TARGET_ROOT}/Tim/{firma}"
+        else:
+            dest_path = f"{TARGET_ROOT}/{recipient}/{firma}"
+
+        print("---")
+        print("id:", item_id)
+        print("src:", name)
+        print("recipient:", recipient)
+        print("firma:", firma)
+        print("date:", date)
+        print("type:", doc_type)
+        print("dest:", dest_path)
+        print("new:", new_name)
+
+        if apply:
+            # ensure folder chain
+            ensure_folder(token, TARGET_ROOT)
+            ensure_folder(token, f"{TARGET_ROOT}/{recipient}")
+            folder_id = ensure_folder(token, dest_path)
+            move_and_rename(token, item_id, folder_id, new_name)
+            state["processed"][item_id] = {
+                "src": name,
+                "dest": dest_path,
+                "new": new_name,
+                "ts": time.time(),
+            }
+            save_state(state)
+            print("APPLIED")
+        else:
+            print("DRY_RUN")
+
+    finally:
+        try:
+            if local_pdf.exists():
+                local_pdf.unlink()
+        except Exception:
+            pass
+
+
+def main(apply: bool = False, reprocess_ids: list[str] | None = None):
     token = get_token()
     state = load_state()
+
+    TMP_DIR.mkdir(exist_ok=True)
+
+    if reprocess_ids:
+        for item_id in reprocess_ids:
+            it = get_item(token, item_id)
+            process_item(token, state, it, apply=apply)
+        return
+
     pdfs = list_inbox_pdfs(token)
     if not pdfs:
         print(f"No PDFs found in inbox '{INBOX}'.")
         return
 
-    TMP_DIR.mkdir(exist_ok=True)
-
     for it in pdfs:
         item_id = it["id"]
-        name = it["name"]
-        created = it.get("createdDateTime") or ""
-
         if state["processed"].get(item_id):
             continue
-
-        local_pdf = TMP_DIR / name
-        try:
-            if local_pdf.exists():
-                local_pdf.unlink()
-            download_item(token, item_id, local_pdf)
-            text = ocr_first_page(local_pdf)
-
-            recipient = pick_recipient(text, name)
-            firma = pick_firma(text, name)
-            doc_type = pick_doc_type(text, name)
-            date = pick_date(text, created, name)
-
-            # sanitize company/doc type for filename
-            firma_fn = re.sub(r"\s+", " ", firma).strip()
-            firma_fn = re.sub(r"[^A-Za-z0-9ÄÖÜäöüß \-_.()]+", "", firma_fn)
-            doc_fn = re.sub(r"\s+", " ", doc_type).strip()
-            doc_fn = re.sub(r"[^A-Za-z0-9ÄÖÜäöüß \-_.()]+", "", doc_fn)
-
-            new_name = f"{date}_{firma_fn}_{doc_fn}.pdf"
-            new_name = re.sub(r"\s+", " ", new_name).strip()
-
-            # Normalize some common company names (avoid OCR quirks)
-            if "volkswagen" in firma.lower():
-                firma = "Volkswagen AG"
-
-            # Folder routing rules
-            if doc_type == "Kaufvertrag":
-                # Per your preference: keep contracts under the company folder
-                dest_path = f"{TARGET_ROOT}/Tim/{firma}"
-            else:
-                dest_path = f"{TARGET_ROOT}/{recipient}/{firma}"
-
-            print("---")
-            print("src:", name)
-            print("recipient:", recipient)
-            print("firma:", firma)
-            print("date:", date)
-            print("type:", doc_type)
-            print("dest:", dest_path)
-            print("new:", new_name)
-
-            if apply:
-                # ensure folder chain
-                ensure_folder(token, TARGET_ROOT)
-                ensure_folder(token, f"{TARGET_ROOT}/{recipient}")
-                folder_id = ensure_folder(token, dest_path)
-                move_and_rename(token, item_id, folder_id, new_name)
-                state["processed"][item_id] = {
-                    "src": name,
-                    "dest": dest_path,
-                    "new": new_name,
-                    "ts": time.time(),
-                }
-                save_state(state)
-                print("APPLIED")
-            else:
-                print("DRY_RUN")
-
-        finally:
-            try:
-                if local_pdf.exists():
-                    local_pdf.unlink()
-            except Exception:
-                pass
+        process_item(token, state, it, apply=apply)
 
 
 if __name__ == "__main__":
@@ -422,5 +447,11 @@ if __name__ == "__main__":
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true", help="Actually move/rename in OneDrive")
+    ap.add_argument(
+        "--reprocess",
+        action="append",
+        default=[],
+        help="Reprocess a specific OneDrive item id (can be used multiple times).",
+    )
     args = ap.parse_args()
-    main(apply=args.apply)
+    main(apply=args.apply, reprocess_ids=args.reprocess or None)
