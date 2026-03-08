@@ -612,23 +612,63 @@ def _scan_merge_proposals() -> tuple[bool, str]:
         children = _list_children_by_id(headers, rid, select="id,name,folder")
         folders = [c for c in children if c.get("folder")]
 
-        groups: dict[str, list[dict[str, Any]]] = {}
+        # Build fuzzy-ish groups based on normalized keys.
+        # We group if keys are equal OR one is a prefix of the other (common: "... bund" suffix).
+        items2: list[dict[str, Any]] = []
         for f in folders:
             name = str(f.get("name") or "")
             if not name:
                 continue
-            groups.setdefault(_folder_key(name), []).append({"id": f.get("id"), "name": name})
+            items2.append({"id": f.get("id"), "name": name, "key": _folder_key(name)})
 
-        for key, items in groups.items():
-            if len(items) < 2:
+        # Union-Find
+        parent = list(range(len(items2)))
+
+        def find(i: int) -> int:
+            while parent[i] != i:
+                parent[i] = parent[parent[i]]
+                i = parent[i]
+            return i
+
+        def union(a: int, b: int) -> None:
+            ra, rb = find(a), find(b)
+            if ra != rb:
+                parent[rb] = ra
+
+        def similar(k1: str, k2: str) -> bool:
+            if not k1 or not k2:
+                return False
+            if k1 == k2:
+                return True
+            # prefix containment (at least 2 tokens to avoid over-grouping)
+            t1 = k1.split(" ")
+            t2 = k2.split(" ")
+            if len(t1) < 2 or len(t2) < 2:
+                return False
+            if k1.startswith(k2) or k2.startswith(k1):
+                # ensure the first 2 tokens match
+                return t1[:2] == t2[:2]
+            return False
+
+        for i in range(len(items2)):
+            for j in range(i + 1, len(items2)):
+                if similar(items2[i]["key"], items2[j]["key"]):
+                    union(i, j)
+
+        groups: dict[int, list[dict[str, Any]]] = {}
+        for idx, it in enumerate(items2):
+            groups.setdefault(find(idx), []).append(it)
+
+        for g in groups.values():
+            if len(g) < 2:
                 continue
-            # choose canonical shortest name
-            items_sorted = sorted(items, key=lambda x: (len(x.get("name") or ""), (x.get("name") or "").casefold()))
-            target = items_sorted[0]
-            sources = items_sorted[1:]
+            # choose canonical shortest folder name
+            g_sorted = sorted(g, key=lambda x: (len(x.get("name") or ""), (x.get("name") or "").casefold()))
+            target = {"id": g_sorted[0]["id"], "name": g_sorted[0]["name"]}
+            sources = [{"id": it["id"], "name": it["name"]} for it in g_sorted[1:]]
             proposals.append({
                 "recipient": rname,
-                "key": key,
+                "key": g_sorted[0]["key"],
                 "target": target,
                 "sources": sources,
             })
