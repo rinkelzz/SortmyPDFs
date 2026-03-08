@@ -181,7 +181,7 @@ def pick_firma(text: str, fallback_name: str) -> str:
     # OCR heuristic: first plausible org-like line in first ~20 lines, but strip addresses
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     head = lines[:25]
-    org_re = re.compile(r"\b(GmbH|AG|eG|Versicherung|Krankenkasse|Bank|Finanzdienstleistungen|Kirchenamt)\b")
+    org_re = re.compile(r"\b(GmbH|AG|eG|Versicherung|Krankenkasse|Bank|Finanzdienstleistungen|Kirchenamt)\b", flags=re.I)
 
     def cleanup(line: str) -> str:
         # remove obvious address tails after separators
@@ -197,6 +197,9 @@ def pick_firma(text: str, fallback_name: str) -> str:
         if org_re.search(ln):
             cleaned = cleanup(ln)
             if cleaned and len(cleaned) >= 3:
+                # Skip lines that are only the legal form (common OCR artifact)
+                if re.fullmatch(r"(GmbH|AG|eG)", cleaned, flags=re.I):
+                    continue
                 # prefer non-garbage over filename
                 return cleaned
 
