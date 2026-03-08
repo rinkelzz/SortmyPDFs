@@ -87,9 +87,15 @@ Wenn du ein separates IMAP-Postfach als Sammelstelle für Dokumenten-Mails nutzt
 
 ## Dashboard (Status-Webseite)
 
-Ein simples Read-only Dashboard ist enthalten unter `SortmyPDFs/dashboard/`.
+Ein Dashboard ist enthalten unter `SortmyPDFs/dashboard/`.
 
-Start (lokal):
+Es zeigt u.a.:
+- Warteschlange (optional live via Graph API)
+- Gesamt verarbeitet (`state.json`)
+- „Sonstige“-Anteil
+- letzte Runs + Fehler (aus `logs/hourly-*.log`)
+
+### Start (lokal)
 - `cd /home/tim/.openclaw/workspace/SortmyPDFs`
 - `source .venv/bin/activate`
 - `pip install -r dashboard/requirements.txt`
@@ -98,10 +104,70 @@ Start (lokal):
 Optional (zeigt die Inbox/Warteschlange live via Graph API):
 - `SORTMYPDFS_DASH_LIVE_INBOX=1 uvicorn dashboard.app:app --host 127.0.0.1 --port 8080`
 
-Buttons (LAN) + Basic Auth (empfohlen):
+### Heimnetz (LAN) + Buttons + Basic Auth (empfohlen)
+
+**Wichtig:** Wenn du das Dashboard im Heimnetz bindest (`--host 0.0.0.0`) und Buttons aktivierst, setz **mindestens** Basic Auth.
+
+Start (manuell):
 - `SORTMYPDFS_DASH_USER=deinuser SORTMYPDFS_DASH_PASS=deinpass SORTMYPDFS_DASH_BUTTONS=1 uvicorn dashboard.app:app --host 0.0.0.0 --port 8080`
 
-Hinweis: Wenn du das Dashboard im Heimnetz/öffentlich bindest, sollten wir einen Schutz davor setzen (z.B. Reverse Proxy + Auth).
+#### Dauerhaft als systemd --user Service (so ist es aktuell eingerichtet)
+
+1) Env-Datei für Credentials/Flags anlegen:
+
+`~/.config/sortmypdfs-dashboard.env`
+```bash
+# Set credentials (recommended when binding to LAN)
+SORTMYPDFS_DASH_USER=change-me
+SORTMYPDFS_DASH_PASS=change-me
+
+# Enable action buttons (run now / timer on/off)
+SORTMYPDFS_DASH_BUTTONS=1
+
+# Optional: query OneDrive inbox live (requires Graph auth cache)
+# SORTMYPDFS_DASH_LIVE_INBOX=1
+```
+
+2) systemd Unit:
+
+`~/.config/systemd/user/sortmypdfs-dashboard.service`
+```ini
+[Unit]
+Description=SortmyPDFs Dashboard (LAN)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/tim/.openclaw/workspace/SortmyPDFs
+EnvironmentFile=/home/tim/.config/sortmypdfs-dashboard.env
+ExecStart=/home/tim/.openclaw/workspace/SortmyPDFs/.venv/bin/uvicorn dashboard.app:app --host 0.0.0.0 --port 8080
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
+```
+
+3) Aktivieren/Starten:
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now sortmypdfs-dashboard.service
+```
+
+4) Status/Logs:
+```bash
+systemctl --user status sortmypdfs-dashboard.service
+journalctl --user -u sortmypdfs-dashboard.service -n 200 --no-pager
+```
+
+#### URL im Heimnetz (lokale IP)
+Die IP findest du z.B. so:
+```bash
+hostname -I
+```
+Dann ist die URL:
+- `http://<lokale-ip>:8080`
 
 ## Automatikbetrieb (stündlich) mit Logs (systemd --user)
 
