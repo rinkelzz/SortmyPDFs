@@ -98,6 +98,9 @@ Start (lokal):
 Optional (zeigt die Inbox/Warteschlange live via Graph API):
 - `SORTMYPDFS_DASH_LIVE_INBOX=1 uvicorn dashboard.app:app --host 127.0.0.1 --port 8080`
 
+Buttons (LAN) + Basic Auth (empfohlen):
+- `SORTMYPDFS_DASH_USER=deinuser SORTMYPDFS_DASH_PASS=deinpass SORTMYPDFS_DASH_BUTTONS=1 uvicorn dashboard.app:app --host 0.0.0.0 --port 8080`
+
 Hinweis: Wenn du das Dashboard im Heimnetz/öffentlich bindest, sollten wir einen Schutz davor setzen (z.B. Reverse Proxy + Auth).
 
 ## Automatikbetrieb (stündlich) mit Logs (systemd --user)

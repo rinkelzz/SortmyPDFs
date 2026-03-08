@@ -116,6 +116,40 @@
     <div class="muted">Keine Logs gefunden.</div>
   {% endif %}
 
+  {% if buttons_enabled %}
+    <h2>Aktionen</h2>
+    <div class="card">
+      <form method="post" action="/action/run" style="display:inline;">
+        <button type="submit">Jetzt Lauf starten (run_hourly.sh)</button>
+      </form>
+      <form method="post" action="/action/timer/enable" style="display:inline; margin-left: 8px;">
+        <button type="submit">Timer an</button>
+      </form>
+      <form method="post" action="/action/timer/disable" style="display:inline; margin-left: 8px;">
+        <button type="submit">Timer aus</button>
+      </form>
+      <div class="muted" style="margin-top: 8px;">
+        Tipp: Wenn du den Dashboard-Host ins Heimnetz bindest, setz unbedingt Basic Auth (Env: <code>SORTMYPDFS_DASH_USER</code>/<code>SORTMYPDFS_DASH_PASS</code>).
+      </div>
+    </div>
+
+    <h2>Letzte Aktion</h2>
+    <div class="card">
+      {% if last_action.ts %}
+        <div><b>{{ last_action.action }}</b></div>
+        <div class="muted">{{ last_action.ts.isoformat() }}</div>
+        <div style="margin-top: 8px;" class="{{ 'ok' if last_action.ok else 'err' }}">
+          {{ 'OK' if last_action.ok else 'FEHLER' }}
+        </div>
+        {% if last_action.detail %}
+          <pre style="white-space: pre-wrap; font-size: 12px; margin-top: 8px;">{{ last_action.detail }}</pre>
+        {% endif %}
+      {% else %}
+        <div class="muted">Noch keine Aktion ausgelöst.</div>
+      {% endif %}
+    </div>
+  {% endif %}
+
   <h2>Starten</h2>
   <div class="muted">
     In der SortmyPDFs-venv installieren und starten:
@@ -125,9 +159,14 @@
       <li><code>pip install -r dashboard/requirements.txt</code></li>
       <li><code>uvicorn dashboard.app:app --host 127.0.0.1 --port 8080</code></li>
     </ul>
+    Heimnetz (LAN) + Buttons:
+    <ul>
+      <li><code>SORTMYPDFS_DASH_USER=...</code> <code>SORTMYPDFS_DASH_PASS=...</code></li>
+      <li><code>SORTMYPDFS_DASH_BUTTONS=1 uvicorn dashboard.app:app --host 0.0.0.0 --port 8080</code></li>
+    </ul>
     Live-Inbox (Graph) optional:
     <ul>
-      <li><code>SORTMYPDFS_DASH_LIVE_INBOX=1 uvicorn ...</code></li>
+      <li><code>SORTMYPDFS_DASH_LIVE_INBOX=1 ...</code></li>
     </ul>
   </div>
 </body>

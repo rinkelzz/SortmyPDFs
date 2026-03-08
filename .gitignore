@@ -8,6 +8,7 @@ SortmyPDFs/state.json
 SortmyPDFs/state_imap.json
 SortmyPDFs/logs/
 SortmyPDFs/__pycache__/
+SortmyPDFs/dashboard/__pycache__/
 SortmyPDFs/.env
 
 # local agent/runtime artifacts

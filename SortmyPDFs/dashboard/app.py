@@ -8,8 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
@@ -34,6 +34,13 @@ LOG_DIR = BASE / "logs"
 # Feature flag: enable OneDrive live query for inbox count/list
 ENABLE_LIVE_INBOX = os.getenv("SORTMYPDFS_DASH_LIVE_INBOX", "0") == "1"
 
+# Auth (recommended when binding to LAN)
+DASH_USER = os.getenv("SORTMYPDFS_DASH_USER")
+DASH_PASS = os.getenv("SORTMYPDFS_DASH_PASS")
+
+# Buttons / control endpoints
+ENABLE_BUTTONS = os.getenv("SORTMYPDFS_DASH_BUTTONS", "0") == "1"
+
 
 @dataclass
 class LogSummary:
@@ -45,6 +52,31 @@ class LogSummary:
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _require_auth(request: Request) -> None:
+    """Very small Basic Auth gate.
+
+    If SORTMYPDFS_DASH_USER/PASS are not set, auth is disabled.
+    """
+
+    if not DASH_USER and not DASH_PASS:
+        return
+
+    auth = request.headers.get("authorization") or ""
+    if not auth.lower().startswith("basic "):
+        raise HTTPException(status_code=401, headers={"WWW-Authenticate": "Basic"})
+
+    import base64
+
+    try:
+        raw = base64.b64decode(auth.split(" ", 1)[1]).decode("utf-8")
+        user, pwd = raw.split(":", 1)
+    except Exception:
+        raise HTTPException(status_code=401, headers={"WWW-Authenticate": "Basic"})
+
+    if user != (DASH_USER or "") or pwd != (DASH_PASS or ""):
+        raise HTTPException(status_code=401, headers={"WWW-Authenticate": "Basic"})
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -186,9 +218,50 @@ def _onedrive_inbox_live(limit: int = 10) -> tuple[int | None, list[dict[str, An
 
 app = FastAPI(title="SortmyPDFs Dashboard")
 
+# runtime status for buttons
+LAST_ACTION: dict[str, Any] = {"ts": None, "action": None, "detail": None, "ok": None}
+
+
+def _set_last(action: str, ok: bool, detail: str | None = None):
+    LAST_ACTION.update({"ts": _utc_now(), "action": action, "ok": ok, "detail": detail})
+
+
+def _run_cmd(cmd: list[str], cwd: Path = BASE, timeout: int = 30) -> tuple[bool, str]:
+    import subprocess
+
+    try:
+        p = subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, timeout=timeout)
+    except Exception as e:
+        return False, str(e)
+
+    out = (p.stdout or "") + (p.stderr or "")
+    ok = p.returncode == 0
+    return ok, out.strip()[-3000:]
+
+
+def _start_runner_async() -> tuple[bool, str]:
+    """Kick off run_hourly.sh in the background.
+
+    We append to a dedicated dashboard-triggered log.
+    """
+
+    import subprocess
+
+    log_path = LOG_DIR / "dashboard-triggered.log"
+    try:
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as f:
+            f.write(f"\n=== dashboard trigger { _utc_now().isoformat() } ===\n")
+            subprocess.Popen(["bash", str(BASE / "run_hourly.sh")], cwd=str(BASE), stdout=f, stderr=subprocess.STDOUT)
+        return True, f"Started. Output appended to {log_path.relative_to(BASE)}"
+    except Exception as e:
+        return False, str(e)
+
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
+    _require_auth(request)
+
     state = _load_json(STATE_PATH)
     processed = state.get("processed", {}) if isinstance(state, dict) else {}
 
@@ -217,6 +290,34 @@ def index(request: Request):
         "inbox_items": inbox_items,
         "inbox_warn": inbox_warn,
         "live_inbox_enabled": ENABLE_LIVE_INBOX,
+        "buttons_enabled": ENABLE_BUTTONS,
+        "last_action": LAST_ACTION,
     }
 
     return TEMPLATES.TemplateResponse("index.html", ctx)
+
+
+@app.post("/action/run")
+def action_run(request: Request):
+    _require_auth(request)
+    if not ENABLE_BUTTONS:
+        raise HTTPException(status_code=404)
+
+    ok, detail = _start_runner_async()
+    _set_last("run_hourly.sh", ok, detail)
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/action/timer/{mode}")
+def action_timer(mode: str, request: Request):
+    _require_auth(request)
+    if not ENABLE_BUTTONS:
+        raise HTTPException(status_code=404)
+
+    if mode not in {"enable", "disable"}:
+        raise HTTPException(status_code=400, detail="mode must be enable|disable")
+
+    cmd = ["systemctl", "--user", mode, "--now", "sortmypdfs.timer"]
+    ok, out = _run_cmd(cmd, cwd=BASE, timeout=30)
+    _set_last(f"systemctl --user {mode} --now sortmypdfs.timer", ok, out)
+    return RedirectResponse(url="/", status_code=303)
