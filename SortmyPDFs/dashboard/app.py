@@ -231,6 +231,57 @@ def _graph_headers() -> tuple[dict[str, str] | None, str | None]:
     return headers, None
 
 
+def _list_children_by_id(headers: dict[str, str], item_id: str, select: str = "id,name,folder,file") -> list[dict[str, Any]]:
+    url = f"https://graph.microsoft.com/v1.0/me/drive/items/{item_id}/children?$select={select}"
+    out: list[dict[str, Any]] = []
+    while True:
+        res = requests.get(url, headers=headers, timeout=60)
+        res.raise_for_status()
+        data = res.json()
+        out.extend(data.get("value", []))
+        url = data.get("@odata.nextLink")
+        if not url:
+            break
+    return out
+
+
+def _list_children_by_path(headers: dict[str, str], path: str, select: str = "id,name,folder,file") -> list[dict[str, Any]]:
+    url = f"https://graph.microsoft.com/v1.0/me/drive/root:/{path}:/children?$select={select}"
+    out: list[dict[str, Any]] = []
+    while True:
+        res = requests.get(url, headers=headers, timeout=60)
+        res.raise_for_status()
+        data = res.json()
+        out.extend(data.get("value", []))
+        url = data.get("@odata.nextLink")
+        if not url:
+            break
+    return out
+
+
+def _folder_key(name: str) -> str:
+    # keep in sync with sort_and_move.py's firma_key logic (roughly)
+    s = name.casefold()
+    s = re.sub(r"[\._,;:()\[\]{}+|]", " ", s)
+    s = s.replace("-", " ")
+    s = re.sub(r"\s+", " ", s).strip()
+    drop = {
+        "gmbh",
+        "ag",
+        "eg",
+        "kg",
+        "se",
+        "mbh",
+        "gbr",
+        "ev",
+        "e.v",
+        "a.g",
+        "versicherung",
+    }
+    words = [w for w in s.split(" ") if w and w not in drop]
+    return " ".join(words)
+
+
 def _onedrive_inbox_live(limit: int = 10) -> tuple[int | None, list[dict[str, Any]] | None, str | None]:
     """Returns (pdf_count, items, warning)."""
 
@@ -271,6 +322,9 @@ LAST_ACTION: dict[str, Any] = {"ts": None, "action": None, "detail": None, "ok":
 
 # runtime cache for empty-folder scan results
 EMPTY_FOLDERS: list[dict[str, Any]] = []
+
+# runtime cache for merge proposals
+MERGE_PROPOSALS: list[dict[str, Any]] = []
 
 
 def _set_last(action: str, ok: bool, detail: str | None = None):
@@ -347,6 +401,7 @@ def index(request: Request):
         "last_action": LAST_ACTION,
         "state_tree": tree,
         "empty_folders": EMPTY_FOLDERS,
+        "merge_proposals": MERGE_PROPOSALS,
     }
 
     return TEMPLATES.TemplateResponse("index.html", ctx)
@@ -524,4 +579,126 @@ async def action_empty_delete(request: Request):
     ok = len(errs) == 0
     detail = f"Deleted {deleted}/{len(ids)} empty folders." + ("\n" + "\n".join(errs[:10]) if errs else "")
     _set_last("empty-folders delete", ok, detail)
+    return RedirectResponse(url="/", status_code=303)
+
+
+def _scan_merge_proposals() -> tuple[bool, str]:
+    """Find duplicate-ish company folders per recipient and propose merges.
+
+    Canonical target folder = shortest name in the group.
+    """
+
+    if not ENABLE_LIVE_INBOX:
+        return False, "Merge scan requires Graph mode (SORTMYPDFS_DASH_LIVE_INBOX=1)."
+
+    headers, warn = _graph_headers()
+    if warn:
+        return False, warn
+
+    try:
+        roots = _list_children_by_path(headers, "SortmyPDFs", select="id,name,folder")
+    except Exception as e:
+        return False, f"Graph query failed: {e}"
+
+    recipients = [r for r in roots if r.get("folder") and r.get("name") in {"Tim", "Chantal", "Sonstige"}]
+    proposals: list[dict[str, Any]] = []
+
+    for r in recipients:
+        rid = r["id"]
+        rname = r.get("name")
+        children = _list_children_by_id(headers, rid, select="id,name,folder")
+        folders = [c for c in children if c.get("folder")]
+
+        groups: dict[str, list[dict[str, Any]]] = {}
+        for f in folders:
+            name = str(f.get("name") or "")
+            if not name:
+                continue
+            groups.setdefault(_folder_key(name), []).append({"id": f.get("id"), "name": name})
+
+        for key, items in groups.items():
+            if len(items) < 2:
+                continue
+            # choose canonical shortest name
+            items_sorted = sorted(items, key=lambda x: (len(x.get("name") or ""), (x.get("name") or "").casefold()))
+            target = items_sorted[0]
+            sources = items_sorted[1:]
+            proposals.append({
+                "recipient": rname,
+                "key": key,
+                "target": target,
+                "sources": sources,
+            })
+
+    MERGE_PROPOSALS.clear()
+    MERGE_PROPOSALS.extend(sorted(proposals, key=lambda p: (p.get("recipient") or "", p.get("key") or "")))
+
+    return True, f"Found {len(MERGE_PROPOSALS)} merge groups."
+
+
+@app.post("/action/merge/scan")
+def action_merge_scan(request: Request):
+    _require_auth(request)
+    if not ENABLE_BUTTONS:
+        raise HTTPException(status_code=404)
+
+    ok, detail = _scan_merge_proposals()
+    _set_last("merge scan", ok, detail)
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/action/merge/apply")
+async def action_merge_apply(request: Request):
+    _require_auth(request)
+    if not ENABLE_BUTTONS:
+        raise HTTPException(status_code=404)
+
+    if not ENABLE_LIVE_INBOX:
+        _set_last("merge apply", False, "Requires Graph mode (SORTMYPDFS_DASH_LIVE_INBOX=1).")
+        return RedirectResponse(url="/", status_code=303)
+
+    headers, warn = _graph_headers()
+    if warn:
+        _set_last("merge apply", False, warn)
+        return RedirectResponse(url="/", status_code=303)
+
+    form: FormData = await request.form()
+    moves = form.getlist("move") if hasattr(form, "getlist") else []
+    # move entries are "sourceId->targetId"
+    if not moves:
+        _set_last("merge apply", False, "No folders selected")
+        return RedirectResponse(url="/", status_code=303)
+
+    moved_items = 0
+    errs: list[str] = []
+
+    for spec in moves:
+        if "->" not in spec:
+            continue
+        source_id, target_id = spec.split("->", 1)
+
+        try:
+            children = _list_children_by_id(headers, source_id, select="id,name,folder,file")
+        except Exception as e:
+            errs.append(f"list {source_id}: {e}")
+            continue
+
+        for ch in children:
+            cid = ch.get("id")
+            if not cid:
+                continue
+            url = f"https://graph.microsoft.com/v1.0/me/drive/items/{cid}"
+            payload = {"parentReference": {"id": target_id}}
+            try:
+                res = requests.patch(url, headers={**headers, "Content-Type": "application/json"}, json=payload, timeout=60)
+                if res.status_code in (200, 201):
+                    moved_items += 1
+                else:
+                    errs.append(f"move {cid}: HTTP {res.status_code} {res.text[:160]}")
+            except Exception as e:
+                errs.append(f"move {cid}: {e}")
+
+    ok = len(errs) == 0
+    detail = f"Moved {moved_items} items." + ("\n" + "\n".join(errs[:10]) if errs else "")
+    _set_last("merge apply", ok, detail)
     return RedirectResponse(url="/", status_code=303)

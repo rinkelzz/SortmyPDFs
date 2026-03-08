@@ -77,6 +77,43 @@
   {% endif %}
 
   {% if buttons_enabled %}
+    <h2>Firmenordner zusammenführen (OneDrive /SortmyPDFs/<Empfänger>)</h2>
+    <div class="card">
+      <div class="muted">Findet Ordner mit sehr ähnlichen Namen (normalisiert) und schlägt Merges vor. Zielordner ist der <b>kürzeste/schönste</b>.</div>
+      <form method="post" action="/action/merge/scan" style="margin-top: 8px;">
+        <button type="submit">Scan: Merge-Vorschläge finden</button>
+      </form>
+
+      {% if merge_proposals and merge_proposals|length > 0 %}
+        <form method="post" action="/action/merge/apply" style="margin-top: 10px;">
+          <div class="muted">Vorschläge: <b>{{ merge_proposals|length }}</b> Gruppen. Wähle aus, was zusammengeführt werden soll:</div>
+          {% for p in merge_proposals[:100] %}
+            <div class="card" style="margin-top: 10px;">
+              <div><b>{{ p.recipient }}</b> – Key: <code>{{ p.key }}</code></div>
+              <div class="muted">Ziel: <code>{{ p.target.name }}</code></div>
+              <ul>
+                {% for s in p.sources %}
+                  <li>
+                    <label>
+                      <input type="checkbox" name="move" value="{{ s.id }}->{{ p.target.id }}" />
+                      <code>{{ s.name }}</code> → <code>{{ p.target.name }}</code>
+                    </label>
+                  </li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% endfor %}
+          {% if merge_proposals|length > 100 %}
+            <div class="muted">(Liste gekürzt auf 100 Gruppen)</div>
+          {% endif %}
+          <button type="submit" style="margin-top: 8px;">Apply selected merges (move items)</button>
+          <div class="muted" style="margin-top: 6px;">Hinweis: Es werden nur Inhalte verschoben. Leere Quell-Ordner kannst du danach im Bereich „Leere Ordner löschen“ entfernen.</div>
+        </form>
+      {% else %}
+        <div class="muted" style="margin-top: 10px;">Noch keine Merge-Vorschläge.</div>
+      {% endif %}
+    </div>
+
     <h2>Leere Ordner löschen (OneDrive /SortmyPDFs)</h2>
     <div class="card">
       <div class="muted">Scannt live in OneDrive nach leeren Ordnern unter <code>/SortmyPDFs</code> und löscht nur nach Bestätigung.</div>
