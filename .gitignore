@@ -5,4 +5,13 @@ SortmyPDFs/.tmp/
 SortmyPDFs/.venv/
 SortmyPDFs/.token_cache.bin
 SortmyPDFs/state.json
+SortmyPDFs/state_imap.json
+SortmyPDFs/logs/
+SortmyPDFs/__pycache__/
 SortmyPDFs/.env
+
+# local agent/runtime artifacts
+.openclaw/
+copilot-multimodal/
+voice.wav
+vosk-models/

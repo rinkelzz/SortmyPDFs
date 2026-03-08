@@ -85,6 +85,21 @@ Wenn du ein separates IMAP-Postfach als Sammelstelle für Dokumenten-Mails nutzt
 - Der IMAP-Ingest lädt PDF-Anhänge aus einem separaten Archiv-Postfach und legt sie in `vomDrucker/` ab.
 - Danach sortiert `sort_and_move.py` wie gewohnt nach `/SortmyPDFs/<Empfaenger>/<Firma>/`.
 
+## Dashboard (Status-Webseite)
+
+Ein simples Read-only Dashboard ist enthalten unter `SortmyPDFs/dashboard/`.
+
+Start (lokal):
+- `cd /home/tim/.openclaw/workspace/SortmyPDFs`
+- `source .venv/bin/activate`
+- `pip install -r dashboard/requirements.txt`
+- `uvicorn dashboard.app:app --host 127.0.0.1 --port 8080`
+
+Optional (zeigt die Inbox/Warteschlange live via Graph API):
+- `SORTMYPDFS_DASH_LIVE_INBOX=1 uvicorn dashboard.app:app --host 127.0.0.1 --port 8080`
+
+Hinweis: Wenn du das Dashboard im Heimnetz/öffentlich bindest, sollten wir einen Schutz davor setzen (z.B. Reverse Proxy + Auth).
+
 ## Automatikbetrieb (stündlich) mit Logs (systemd --user)
 
 Es gibt ein Runner-Script im Repo:

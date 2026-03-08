@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SortmyPDFs Dashboard</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; color: #111; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 14px; }
+    .kpi { font-size: 28px; font-weight: 700; margin-top: 6px; }
+    .muted { color: #666; font-size: 12px; }
+    h1 { margin: 0 0 6px 0; }
+    h2 { margin: 18px 0 8px 0; font-size: 16px; }
+    ul { margin: 6px 0 0 18px; }
+    code { background: #f5f5f5; padding: 2px 5px; border-radius: 6px; }
+    .err { color: #b00020; }
+    .ok { color: #0b6; }
+    table { width: 100%; border-collapse: collapse; }
+    td, th { border-bottom: 1px solid #eee; padding: 6px 8px; text-align: left; font-size: 13px; }
+    th { background: #fafafa; }
+  </style>
+</head>
+<body>
+  <h1>SortmyPDFs Dashboard</h1>
+  <div class="muted">Stand: {{ now.isoformat() }}</div>
+
+  <div class="grid" style="margin-top: 12px;">
+    <div class="card">
+      <div class="muted">Gesamt verarbeitet (state.json)</div>
+      <div class="kpi">{{ processed_count }}</div>
+    </div>
+    <div class="card">
+      <div class="muted">Sonstige (Anzahl Dest-Pfade)</div>
+      <div class="kpi">{{ sonstige_count }}</div>
+    </div>
+    <div class="card">
+      <div class="muted">IMAP State</div>
+      <div style="margin-top: 6px; font-size: 14px;">
+        UIDs: <b>{{ imap_uid_count }}</b><br/>
+        Hashes: <b>{{ imap_hash_count }}</b>
+      </div>
+    </div>
+    <div class="card">
+      <div class="muted">Warteschlange (OneDrive {{ 'live' if live_inbox_enabled else '—' }})</div>
+      {% if inbox_pdf_count is not none %}
+        <div class="kpi">{{ inbox_pdf_count }}</div>
+      {% else %}
+        <div style="margin-top: 6px;" class="muted">{{ inbox_warn }}</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <h2>Top Firmen (aus Zielpfad)</h2>
+  {% if top_firms %}
+    <table>
+      <thead><tr><th>Firma</th><th>Anzahl</th></tr></thead>
+      <tbody>
+      {% for firm, cnt in top_firms %}
+        <tr><td>{{ firm }}</td><td>{{ cnt }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="muted">Keine Daten.</div>
+  {% endif %}
+
+  <h2>Warteschlange – letzte PDFs</h2>
+  {% if inbox_items %}
+    <ul>
+      {% for it in inbox_items %}
+        <li><code>{{ it.get('name') }}</code> <span class="muted">created={{ it.get('createdDateTime') }}</span></li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <div class="muted">(nur verfügbar, wenn Live-Inbox aktiviert ist)</div>
+  {% endif %}
+
+  <h2>Letzte Läufe (logs/hourly-*.log)</h2>
+  {% if recent_logs %}
+    <table>
+      <thead><tr><th>Log</th><th>Zeit</th><th>ERROR</th><th>WARN</th><th>INFO</th></tr></thead>
+      <tbody>
+      {% for lg in recent_logs %}
+        <tr>
+          <td><code>{{ lg.path }}</code></td>
+          <td class="muted">{{ lg.ts.isoformat() if lg.ts else '' }}</td>
+          <td class="{{ 'err' if lg.level_counts.get('ERROR',0) else 'ok' }}">{{ lg.level_counts.get('ERROR',0) }}</td>
+          <td>{{ lg.level_counts.get('WARN',0) }}</td>
+          <td>{{ lg.level_counts.get('INFO',0) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+
+    <h2>Fehler (aus den letzten Logs, gekürzt)</h2>
+    {% set any_errors = false %}
+    {% for lg in recent_logs %}
+      {% if lg.error_lines %}
+        {% set any_errors = true %}
+        <div class="card" style="margin-top: 10px;">
+          <div><code>{{ lg.path }}</code></div>
+          <ul>
+            {% for line in lg.error_lines %}
+              <li class="err"><code>{{ line }}</code></li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+    {% endfor %}
+    {% if not any_errors %}
+      <div class="muted">Keine ERROR-Zeilen gefunden.</div>
+    {% endif %}
+
+  {% else %}
+    <div class="muted">Keine Logs gefunden.</div>
+  {% endif %}
+
+  <h2>Starten</h2>
+  <div class="muted">
+    In der SortmyPDFs-venv installieren und starten:
+    <ul>
+      <li><code>cd /home/tim/.openclaw/workspace/SortmyPDFs</code></li>
+      <li><code>source .venv/bin/activate</code></li>
+      <li><code>pip install -r dashboard/requirements.txt</code></li>
+      <li><code>uvicorn dashboard.app:app --host 127.0.0.1 --port 8080</code></li>
+    </ul>
+    Live-Inbox (Graph) optional:
+    <ul>
+      <li><code>SORTMYPDFS_DASH_LIVE_INBOX=1 uvicorn ...</code></li>
+    </ul>
+  </div>
+</body>
+</html>
