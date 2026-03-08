@@ -342,6 +342,7 @@ LAST_ACTION: dict[str, Any] = {"ts": None, "action": None, "detail": None, "ok":
 
 # runtime cache for empty-folder scan results
 EMPTY_FOLDERS: list[dict[str, Any]] = []
+EMPTY_SCAN_RUNNING: bool = False
 
 # runtime cache for merge proposals
 MERGE_PROPOSALS: list[dict[str, Any]] = []
@@ -421,6 +422,7 @@ def index(request: Request):
         "last_action": LAST_ACTION,
         "state_tree": tree,
         "empty_folders": EMPTY_FOLDERS,
+        "empty_scan_running": EMPTY_SCAN_RUNNING,
         "merge_proposals": MERGE_PROPOSALS,
         "aliases": _load_aliases(),
     }
@@ -543,13 +545,38 @@ def _scan_empty_folders_under_root(root_path: str = "SortmyPDFs") -> tuple[bool,
 
 
 @app.post("/action/empty-folders/scan")
+def _start_empty_scan_async(root: str = "SortmyPDFs") -> tuple[bool, str]:
+    global EMPTY_SCAN_RUNNING
+
+    if EMPTY_SCAN_RUNNING:
+        return False, "Empty-folder scan already running."
+
+    EMPTY_SCAN_RUNNING = True
+    _set_last("empty-folders scan", True, "Started scan in background…")
+
+    import threading
+
+    def run():
+        global EMPTY_SCAN_RUNNING
+        try:
+            ok, detail = _scan_empty_folders_under_root(root)
+            _set_last("empty-folders scan", ok, detail)
+        finally:
+            EMPTY_SCAN_RUNNING = False
+
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    return True, "Started"
+
+
 def action_empty_scan(request: Request):
     _require_auth(request)
     if not ENABLE_BUTTONS:
         raise HTTPException(status_code=404)
 
-    ok, detail = _scan_empty_folders_under_root("SortmyPDFs")
-    _set_last("empty-folders scan", ok, detail)
+    ok, detail = _start_empty_scan_async("SortmyPDFs")
+    if not ok:
+        _set_last("empty-folders scan", False, detail)
     return RedirectResponse(url="/", status_code=303)
 
 

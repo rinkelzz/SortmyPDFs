@@ -183,6 +183,9 @@
       <div class="muted">Scannt live in OneDrive nach leeren Ordnern unter <code>/SortmyPDFs</code> und löscht nur nach Bestätigung.</div>
       <form method="post" action="/action/empty-folders/scan" style="margin-top: 8px;">
         <button type="submit">Scan: leere Ordner finden</button>
+        {% if empty_scan_running %}
+          <span class="muted" style="margin-left: 10px;">Scan läuft… Seite in ein paar Sekunden neu laden.</span>
+        {% endif %}
       </form>
 
       {% if empty_folders and empty_folders|length > 0 %}
