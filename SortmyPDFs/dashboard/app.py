@@ -195,26 +195,19 @@ def _list_recent_logs(limit: int = 10) -> list[LogSummary]:
     return [_summarize_log(p) for p in logs]
 
 
-def _onedrive_inbox_live(limit: int = 10) -> tuple[int | None, list[dict[str, Any]] | None, str | None]:
-    """Returns (pdf_count, items, warning).
-
-    Only works if msal/requests are installed AND token cache exists.
-    """
-
-    if not ENABLE_LIVE_INBOX:
-        return None, None, "Live inbox disabled (set SORTMYPDFS_DASH_LIVE_INBOX=1 to enable)."
+def _graph_headers() -> tuple[dict[str, str] | None, str | None]:
+    """Return (headers, warning)."""
 
     if msal is None or requests is None or load_dotenv is None:
-        return None, None, "Live inbox requires msal/requests/python-dotenv in the venv."
+        return None, "Graph requires msal/requests/python-dotenv in the venv."
 
     load_dotenv(BASE / ".env")
     tenant = os.getenv("GRAPH_TENANT", "consumers")
     client_id = os.getenv("GRAPH_CLIENT_ID")
     scopes = os.getenv("GRAPH_SCOPES", "Files.ReadWrite.All offline_access").split()
-    inbox = os.getenv("ONEDRIVE_INBOX", "vomDrucker")
 
     if not client_id:
-        return None, None, "GRAPH_CLIENT_ID missing in .env; cannot query inbox live."
+        return None, "GRAPH_CLIENT_ID missing in .env."
 
     cache_path = BASE / ".token_cache.bin"
     cache = msal.SerializableTokenCache()
@@ -228,13 +221,27 @@ def _onedrive_inbox_live(limit: int = 10) -> tuple[int | None, list[dict[str, An
     )
     accounts = app.get_accounts()
     if not accounts:
-        return None, None, "No cached Graph account/token. Run auth_device_code.py first."
+        return None, "No cached Graph account/token. Run auth_device_code.py first."
 
     result = app.acquire_token_silent(scopes, account=accounts[0])
     if not result or "access_token" not in result:
-        return None, None, "No valid access token (expired?). Run auth_device_code.py again."
+        return None, "No valid access token (expired?). Run auth_device_code.py again."
 
     headers = {"Authorization": f"Bearer {result['access_token']}"}
+    return headers, None
+
+
+def _onedrive_inbox_live(limit: int = 10) -> tuple[int | None, list[dict[str, Any]] | None, str | None]:
+    """Returns (pdf_count, items, warning)."""
+
+    if not ENABLE_LIVE_INBOX:
+        return None, None, "Live inbox disabled (set SORTMYPDFS_DASH_LIVE_INBOX=1 to enable)."
+
+    headers, warn = _graph_headers()
+    if warn:
+        return None, None, warn
+
+    inbox = os.getenv("ONEDRIVE_INBOX", "vomDrucker")
     url = (
         f"https://graph.microsoft.com/v1.0/me/drive/root:/{inbox}:/children"
         "?$select=id,name,createdDateTime,lastModifiedDateTime,file"
@@ -261,6 +268,9 @@ app = FastAPI(title="SortmyPDFs Dashboard")
 
 # runtime status for buttons
 LAST_ACTION: dict[str, Any] = {"ts": None, "action": None, "detail": None, "ok": None}
+
+# runtime cache for empty-folder scan results
+EMPTY_FOLDERS: list[dict[str, Any]] = []
 
 
 def _set_last(action: str, ok: bool, detail: str | None = None):
@@ -336,6 +346,7 @@ def index(request: Request):
         "buttons_enabled": ENABLE_BUTTONS,
         "last_action": LAST_ACTION,
         "state_tree": tree,
+        "empty_folders": EMPTY_FOLDERS,
     }
 
     return TEMPLATES.TemplateResponse("index.html", ctx)
@@ -383,4 +394,134 @@ async def action_reprocess(request: Request):
     cmd = [str(py), "sort_and_move.py", "--apply", "--reprocess", item_id]
     ok, out = _run_cmd(cmd, cwd=BASE, timeout=180)
     _set_last(f"reprocess {item_id}", ok, out)
+    return RedirectResponse(url="/", status_code=303)
+
+
+def _scan_empty_folders_under_root(root_path: str = "SortmyPDFs") -> tuple[bool, str]:
+    """Scan OneDrive for empty folders under root_path.
+
+    Requires Graph auth.
+    Stores results in EMPTY_FOLDERS.
+    """
+
+    if not ENABLE_LIVE_INBOX:
+        return False, "Empty-folder scan requires Graph mode (set SORTMYPDFS_DASH_LIVE_INBOX=1)."
+
+    headers, warn = _graph_headers()
+    if warn:
+        return False, warn
+
+    # Find root folder children
+    start_url = (
+        f"https://graph.microsoft.com/v1.0/me/drive/root:/{root_path}:/children"
+        "?$select=id,name,folder,parentReference"
+    )
+
+    empty: list[dict[str, Any]] = []
+
+    def list_children(folder_id: str) -> list[dict[str, Any]]:
+        url = (
+            f"https://graph.microsoft.com/v1.0/me/drive/items/{folder_id}/children"
+            "?$select=id,name,folder,parentReference"
+        )
+        out: list[dict[str, Any]] = []
+        while True:
+            res = requests.get(url, headers=headers, timeout=60)
+            res.raise_for_status()
+            data = res.json()
+            out.extend(data.get("value", []))
+            url = data.get("@odata.nextLink")
+            if not url:
+                break
+        return out
+
+    def walk(node_id: str, path: str) -> None:
+        children = list_children(node_id)
+        folders = [c for c in children if c.get("folder")]
+        if not children:
+            empty.append({"id": node_id, "path": path})
+            return
+        for f in folders:
+            walk(f["id"], f"{path}/{f.get('name')}")
+
+        # after walking children, re-check: if only empty children existed, parent may now be effectively empty
+        # BUT we do not delete parents automatically in scan; user will select.
+
+    try:
+        res = requests.get(start_url, headers=headers, timeout=60)
+        res.raise_for_status()
+        top = res.json().get("value", [])
+        top_folders = [c for c in top if c.get("folder")]
+        for f in top_folders:
+            walk(f["id"], f"{root_path}/{f.get('name')}")
+    except Exception as e:
+        return False, f"Graph scan failed: {e}"
+
+    # sort deepest first
+    empty.sort(key=lambda x: len(str(x.get("path", "")).split("/")), reverse=True)
+
+    EMPTY_FOLDERS.clear()
+    EMPTY_FOLDERS.extend(empty)
+
+    return True, f"Found {len(empty)} empty folders under /{root_path}."
+
+
+@app.post("/action/empty-folders/scan")
+def action_empty_scan(request: Request):
+    _require_auth(request)
+    if not ENABLE_BUTTONS:
+        raise HTTPException(status_code=404)
+
+    ok, detail = _scan_empty_folders_under_root("SortmyPDFs")
+    _set_last("empty-folders scan", ok, detail)
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/action/empty-folders/delete")
+async def action_empty_delete(request: Request):
+    _require_auth(request)
+    if not ENABLE_BUTTONS:
+        raise HTTPException(status_code=404)
+
+    if not ENABLE_LIVE_INBOX:
+        _set_last("empty-folders delete", False, "Requires Graph mode (SORTMYPDFS_DASH_LIVE_INBOX=1).")
+        return RedirectResponse(url="/", status_code=303)
+
+    headers, warn = _graph_headers()
+    if warn:
+        _set_last("empty-folders delete", False, warn)
+        return RedirectResponse(url="/", status_code=303)
+
+    form: FormData = await request.form()
+    ids = form.getlist("folder_id") if hasattr(form, "getlist") else []
+
+    if not ids:
+        _set_last("empty-folders delete", False, "No folders selected")
+        return RedirectResponse(url="/", status_code=303)
+
+    # delete deepest first based on cached paths
+    path_by_id = {f.get("id"): f.get("path") for f in EMPTY_FOLDERS}
+    ids_sorted = sorted(ids, key=lambda i: len(str(path_by_id.get(i, "")).split("/")), reverse=True)
+
+    deleted = 0
+    errs: list[str] = []
+    for folder_id in ids_sorted:
+        url = f"https://graph.microsoft.com/v1.0/me/drive/items/{folder_id}"
+        try:
+            res = requests.delete(url, headers=headers, timeout=60)
+            if res.status_code in (204, 200):
+                deleted += 1
+            else:
+                errs.append(f"{folder_id}: HTTP {res.status_code} {res.text[:200]}")
+        except Exception as e:
+            errs.append(f"{folder_id}: {e}")
+
+    # remove deleted from cache
+    remaining = [f for f in EMPTY_FOLDERS if f.get("id") not in set(ids)]
+    EMPTY_FOLDERS.clear()
+    EMPTY_FOLDERS.extend(remaining)
+
+    ok = len(errs) == 0
+    detail = f"Deleted {deleted}/{len(ids)} empty folders." + ("\n" + "\n".join(errs[:10]) if errs else "")
+    _set_last("empty-folders delete", ok, detail)
     return RedirectResponse(url="/", status_code=303)
