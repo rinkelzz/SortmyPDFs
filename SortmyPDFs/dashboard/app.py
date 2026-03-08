@@ -680,8 +680,22 @@ def _scan_merge_proposals() -> tuple[bool, str]:
         for g in groups.values():
             if len(g) < 2:
                 continue
-            # choose canonical shortest folder name
-            g_sorted = sorted(g, key=lambda x: (len(x.get("name") or ""), (x.get("name") or "").casefold()))
+
+            # Filter out already-empty folders (after a merge, sources may be empty but still exist)
+            with_counts: list[dict[str, Any]] = []
+            for it in g:
+                try:
+                    n = len(_list_children_by_id(headers, it["id"], select="id"))
+                except Exception:
+                    n = 0
+                with_counts.append({**it, "child_count": n})
+
+            nonempty = [it for it in with_counts if int(it.get("child_count") or 0) > 0]
+            if len(nonempty) < 2:
+                continue
+
+            # choose canonical shortest folder name among non-empty
+            g_sorted = sorted(nonempty, key=lambda x: (len(x.get("name") or ""), (x.get("name") or "").casefold()))
             target = {"id": g_sorted[0]["id"], "name": g_sorted[0]["name"]}
             sources = [{"id": it["id"], "name": it["name"]} for it in g_sorted[1:]]
             proposals.append({
