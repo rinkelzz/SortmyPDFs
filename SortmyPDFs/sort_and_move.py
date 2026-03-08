@@ -98,12 +98,42 @@ def download_item(token, item_id, out_path: Path):
                 f.write(chunk)
 
 
+def _find_bin(name: str) -> str:
+    """Find an executable, even when systemd PATH is minimal.
+
+    We prefer PATH, but fall back to common locations (incl. linuxbrew).
+    """
+
+    p = shutil.which(name)
+    if p:
+        return p
+
+    candidates = [
+        f"/usr/bin/{name}",
+        f"/usr/local/bin/{name}",
+        f"/home/linuxbrew/.linuxbrew/bin/{name}",
+        f"/home/tim/.linuxbrew/bin/{name}",
+    ]
+    for c in candidates:
+        if Path(c).exists():
+            return c
+
+    raise FileNotFoundError(
+        f"Required binary '{name}' not found. Install it (e.g. poppler-utils for pdftoppm, tesseract-ocr for tesseract) "
+        "or fix PATH for the service."
+    )
+
+
 def ocr_first_page(pdf_path: Path) -> str:
     TMP_DIR.mkdir(exist_ok=True)
+
+    pdftoppm = _find_bin("pdftoppm")
+    tesseract = _find_bin("tesseract")
+
     stem = TMP_DIR / (pdf_path.stem + "-page")
     # render first page to png
     subprocess.run([
-        "pdftoppm",
+        pdftoppm,
         "-f",
         "1",
         "-l",
@@ -114,10 +144,15 @@ def ocr_first_page(pdf_path: Path) -> str:
         str(pdf_path),
         str(stem),
     ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    img = Path(str(stem) + "-1.png")
+    # pdftoppm usually writes "-1.png" but some versions/configs use zero-padded numbering ("-01.png").
+    candidates = sorted(TMP_DIR.glob(stem.name + "-*.png"))
+    if not candidates:
+        raise FileNotFoundError(f"pdftoppm produced no PNGs for {pdf_path}")
+    img = candidates[0]
+
     out_base = TMP_DIR / (pdf_path.stem + "-ocr")
     subprocess.run([
-        "tesseract",
+        tesseract,
         str(img),
         str(out_base),
         "-l",
