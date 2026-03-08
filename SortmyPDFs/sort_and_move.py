@@ -210,13 +210,23 @@ def pick_firma(text: str, fallback_name: str) -> str:
     if "hdi" in fallback_name.lower():
         return "HDI"
 
+    # High-confidence special cases
+    if re.search(r"deutsche\s+rentenversicherung", text, flags=re.I):
+        # Often appears as "Deutsche Rentenversicherung Bund"
+        if re.search(r"deutsche\s+rentenversicherung\s+bund", text, flags=re.I):
+            return "Deutsche Rentenversicherung Bund"
+        return "Deutsche Rentenversicherung"
+
     # Use filename as a strong signal (usually cleaner than OCR)
     from_fn = firma_from_filename(fallback_name)
 
     # OCR heuristic: first plausible org-like line in first ~20 lines, but strip addresses
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     head = lines[:25]
-    org_re = re.compile(r"\b(GmbH|AG|eG|Versicherung|Krankenkasse|Bank|Finanzdienstleistungen|Kirchenamt)\b", flags=re.I)
+    org_re = re.compile(
+        r"\b(GmbH|AG|eG|Versicherung|Krankenkasse|Bank|Finanzdienstleistungen|Kirchenamt|Rentenversicherung)\b",
+        flags=re.I,
+    )
 
     def cleanup(line: str) -> str:
         # remove obvious address tails after separators
