@@ -26,6 +26,9 @@ TMP_DIR = BASE / ".tmp"
 
 SESSION = requests.Session()
 
+# cache: recipient_path -> {firma_key(name): {"name": name, "id": id}}
+FOLDER_CACHE: dict[str, dict[str, dict]] = {}
+
 
 def load_state():
     if STATE_PATH.exists():
@@ -203,6 +206,37 @@ def normalize_firma(name: str) -> str:
     return name[:80] if len(name) > 80 else name
 
 
+def firma_key(name: str) -> str:
+    """Key for de-duplicating companies / folder reuse.
+
+    We intentionally normalize aggressively so that minor OCR variants land in the same folder.
+    """
+
+    s = name.casefold()
+    s = re.sub(r"[\._,;:()\[\]{}+|]", " ", s)
+    s = s.replace("-", " ")
+    s = re.sub(r"\s+", " ", s).strip()
+
+    # drop common legal forms / noise words for matching
+    drop = {
+        "gmbh",
+        "ag",
+        "eg",
+        "kg",
+        "se",
+        "mbh",
+        "gbr",
+        "ev",
+        "e.v",
+        "a.g",
+        "a.",
+        "g.",
+        "versicherung",
+    }
+    words = [w for w in s.split(" ") if w and w not in drop]
+    return " ".join(words)
+
+
 def pick_firma(text: str, fallback_name: str) -> str:
     # Always prefer HDI if present (your rule)
     if re.search(r"\bHDI\b", text):
@@ -346,6 +380,47 @@ def ensure_folder(token, path: str):
     res2.raise_for_status()
 
 
+def list_child_folders_by_path(token: str, path: str) -> list[dict]:
+    """List direct child folders under a given OneDrive path."""
+
+    url = (
+        f"https://graph.microsoft.com/v1.0/me/drive/root:/{path}:/children"
+        "?$select=id,name,folder"
+    )
+    res = graph("GET", url, token)
+    res.raise_for_status()
+    items = res.json().get("value", [])
+    return [it for it in items if it.get("folder")]
+
+
+def resolve_existing_firma_folder(token: str, recipient: str, firma: str) -> str:
+    """If a matching folder already exists under SortmyPDFs/<recipient>/, reuse its name.
+
+    Returns the folder NAME to use (not the id). Matching is based on firma_key().
+    """
+
+    parent_path = f"{TARGET_ROOT}/{recipient}"
+
+    if parent_path not in FOLDER_CACHE:
+        m: dict[str, dict] = {}
+        try:
+            folders = list_child_folders_by_path(token, parent_path)
+        except Exception:
+            folders = []
+        for f in folders:
+            name = str(f.get("name") or "")
+            if not name:
+                continue
+            m[firma_key(name)] = {"name": name, "id": f.get("id")}
+        FOLDER_CACHE[parent_path] = m
+
+    key = firma_key(firma)
+    hit = FOLDER_CACHE[parent_path].get(key)
+    if hit and hit.get("name"):
+        return str(hit["name"])
+    return firma
+
+
 def move_and_rename(token, item_id: str, dest_folder_id: str, new_name: str):
     """Move an item to dest_folder_id and rename it.
 
@@ -408,6 +483,13 @@ def process_item(token: str, state: dict, it: dict, apply: bool) -> None:
         doc_type = pick_doc_type(text, name)
         date = pick_date(text, created, name)
 
+        # Canonicalize some common company names (keep folder names short)
+        if "volkswagen" in firma.lower():
+            firma = "Volkswagen"
+
+        # If the company folder already exists under this recipient, reuse it (prevents duplicates)
+        firma = resolve_existing_firma_folder(token, recipient, firma)
+
         # sanitize company/doc type for filename
         firma_fn = re.sub(r"\s+", " ", firma).strip()
         firma_fn = re.sub(r"[^A-Za-z0-9ÄÖÜäöüß \-_.()]+", "", firma_fn)
@@ -416,10 +498,6 @@ def process_item(token: str, state: dict, it: dict, apply: bool) -> None:
 
         new_name = f"{date}_{firma_fn}_{doc_fn}.pdf"
         new_name = re.sub(r"\s+", " ", new_name).strip()
-
-        # Normalize some common company names (avoid OCR quirks)
-        if "volkswagen" in firma.lower():
-            firma = "Volkswagen AG"
 
         # Folder routing rules
         if doc_type == "Kaufvertrag":
