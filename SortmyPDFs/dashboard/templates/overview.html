@@ -32,16 +32,18 @@
   {% if buttons_enabled %}
     <h2>Aktionen</h2>
     <div class="card">
-      <form method="post" action="/action/run" style="display:inline;">
-        <button type="submit">Jetzt Lauf starten (run_hourly.sh)</button>
-      </form>
-      <form method="post" action="/action/timer/enable" style="display:inline; margin-left: 8px;">
-        <button type="submit">Timer an</button>
-      </form>
-      <form method="post" action="/action/timer/disable" style="display:inline; margin-left: 8px;">
-        <button type="submit">Timer aus</button>
-      </form>
-      <div class="muted" style="margin-top: 8px;">
+      <div class="actions">
+        <form method="post" action="/action/run">
+          <button type="submit">Jetzt Lauf starten (run_hourly.sh)</button>
+        </form>
+        <form method="post" action="/action/timer/enable">
+          <button type="submit">Timer an</button>
+        </form>
+        <form method="post" action="/action/timer/disable">
+          <button type="submit">Timer aus</button>
+        </form>
+      </div>
+      <div class="muted" style="margin-top: 10px;">
         Tipp: Wenn du den Dashboard-Host ins Heimnetz bindest, setz unbedingt Basic Auth (Env: <code>SORTMYPDFS_DASH_USER</code>/<code>SORTMYPDFS_DASH_PASS</code>).
       </div>
     </div>

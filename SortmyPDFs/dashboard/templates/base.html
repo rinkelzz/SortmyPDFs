@@ -40,6 +40,7 @@
     .nav a.active { background: #111; color: #fff; }
     .nav .brand { font-weight: 700; margin-right: 10px; }
     .spacer { flex: 1; }
+    .nav-right { display: inline-flex; gap: 10px; align-items: center; }
 
     .badge {
       display:inline-block; padding: 2px 7px; border-radius: 999px;
@@ -83,10 +84,17 @@
     /* Mobile tweaks */
     @media (max-width: 640px) {
       :root { --pad: 14px; }
-      .nav { gap: 6px; padding: 10px 12px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      /* Make the nav wrap into two rows on mobile so Refresh/Time aren't hidden */
+      .nav { gap: 6px; padding: 10px 12px; flex-wrap: wrap; }
+      .nav .spacer { display: none; }
+      .nav-right { width: 100%; justify-content: space-between; }
       .nav .brand { display: none; }
       .btn { padding: 6px 10px; }
       td, th { font-size: 12px; padding: 6px 6px; }
+
+      /* Actions / controls stack nicely */
+      .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+      .actions form { margin: 0 !important; }
     }
   </style>
 </head>
@@ -106,8 +114,10 @@
     <a href="/empty-folders" class="{{ 'active' if active=='empty' else '' }}">Leere Ordner</a>
     <a href="/aliases" class="{{ 'active' if active=='aliases' else '' }}">Aliase</a>
     <div class="spacer"></div>
-    <button class="btn" onclick="location.reload()">Refresh</button>
-    <div class="muted">{{ now.isoformat() if now else '' }}</div>
+    <div class="nav-right">
+      <button class="btn" onclick="location.reload()">Refresh</button>
+      <div class="muted">{{ now.isoformat() if now else '' }}</div>
+    </div>
   </div>
 
   <main>
