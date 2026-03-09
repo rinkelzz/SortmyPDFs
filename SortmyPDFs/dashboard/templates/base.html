@@ -67,11 +67,14 @@
     textarea { max-width: 100%; }
     button {
       font: inherit;
+      color: #111;
       border: 1px solid #ddd;
       background: #fff;
       padding: 8px 12px;
       border-radius: 10px;
       cursor: pointer;
+      white-space: nowrap;
+      -webkit-text-fill-color: currentColor;
     }
 
     /* Alias chips */
@@ -79,7 +82,7 @@
     .chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 999px; border: 1px solid #eee; background: #fafafa; }
     .chip code { background: transparent; padding: 0; }
     .chip form { display: inline; margin: 0; }
-    .chip button { padding: 3px 8px; border-radius: 999px; }
+    .chip button { padding: 3px 8px; border-radius: 999px; font-size: 12px; line-height: 1.2; }
 
     /* Mobile tweaks */
     @media (max-width: 640px) {
