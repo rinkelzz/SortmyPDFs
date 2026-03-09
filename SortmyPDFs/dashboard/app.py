@@ -103,7 +103,25 @@ def _load_aliases() -> dict[str, list[str]]:
 
 
 def _save_aliases(d: dict[str, list[str]]) -> None:
-    ALIASES_PATH.write_text(json.dumps(d, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    # Normalize: keep keys and values sorted for stable diffs + nicer UX.
+    normalized: dict[str, list[str]] = {}
+    for canon in sorted(d.keys(), key=lambda s: s.casefold()):
+        als = d.get(canon) or []
+        # de-dup (casefold) + sort alpha
+        seen: set[str] = set()
+        out: list[str] = []
+        for a in als:
+            s = str(a).strip()
+            if not s:
+                continue
+            cf = s.casefold()
+            if cf in seen:
+                continue
+            seen.add(cf)
+            out.append(s)
+        normalized[canon] = sorted(out, key=lambda s: s.casefold())
+
+    ALIASES_PATH.write_text(json.dumps(normalized, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
 def _count_sonstige(processed: dict[str, Any]) -> int:
@@ -866,8 +884,8 @@ async def action_alias_add(request: Request):
             d[canonical].append(a)
             existing_cf.add(a.casefold())
 
-    # sort by length then alpha
-    d[canonical] = sorted(d[canonical], key=lambda s: (len(s), s.casefold()))
+    # sort alpha (case-insensitive)
+    d[canonical] = sorted(d[canonical], key=lambda s: s.casefold())
     _save_aliases(d)
     _set_last("alias add", True, f"Saved {len(aliases)} aliases under '{canonical}'.")
     return RedirectResponse(url="/", status_code=303)

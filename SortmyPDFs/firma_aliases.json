@@ -1,14 +1,57 @@
 {
-  "Volkswagen": [
-    "volkswagen",
-    "volkswagen leasing",
-    "vwfs",
-    "volkswagen bank"
+  "AudiBKK": [
+    "AudiBKK"
+  ],
+  "baloise": [
+    "baloise"
+  ],
+  "Debeka": [
+    "Debeka"
   ],
   "Deutsche Rentenversicherung Bund": [
-    "deutsche rentenversicherung bund",
     "deutsche rentenversicherung",
+    "deutsche rentenversicherung bund",
     "zentrale zulagenstelle für altersvermögen",
     "zulagenstelle"
+  ],
+  "DHL": [
+    "DHL"
+  ],
+  "Dr. Fischer": [
+    "Hr. Dr. Jens Fischer"
+  ],
+  "Dz Hyp": [
+    "Dz Hyp"
+  ],
+  "Euradia": [
+    "Euradia",
+    "Euradia1"
+  ],
+  "HDI": [
+    "HDI"
+  ],
+  "IG Metall": [
+    "IG Metall"
+  ],
+  "Krankenschein": [
+    "Arbeitsunfähigkeits"
+  ],
+  "Lohnsteuerhilfeverein": [
+    "Lohnsteuerhilfeverein"
+  ],
+  "LSW": [
+    "LSW GmBH"
+  ],
+  "VfL Wolfsburg": [
+    "VfL Wolfsburg-Fußball"
+  ],
+  "Volkswagen": [
+    "volkswagen",
+    "volkswagen bank",
+    "volkswagen leasing",
+    "vwfs"
+  ],
+  "WWK": [
+    "WWK"
   ]
 }

@@ -4,39 +4,45 @@
   <div class="card">
     <div class="muted">Firmen "anlegen" (kanonischer Ordnername) und Alias-Strings hinzufügen. Matching ist: <b>Text enthält</b> (case-insensitive).</div>
 
-    <form method="post" action="/action/aliases/add" style="margin-top: 8px;">
+    <form method="post" action="/action/aliases/add" style="margin-top: 10px;">
       <div class="muted">Kanonischer Name (Ordner):</div>
-      <input type="text" name="canonical" placeholder="z.B. Volkswagen" style="width: 420px;" />
-      <div class="muted" style="margin-top: 6px;">Aliase (eine Zeile pro Alias):</div>
-      <textarea name="aliases" rows="4" style="width: 100%;" placeholder="volkswagen leasing\nvwfs\nvolkswagen bank"></textarea>
-      <button type="submit" style="margin-top: 6px;">Speichern</button>
+      <input type="text" name="canonical" placeholder="z.B. Volkswagen" />
+      <div class="muted" style="margin-top: 10px;">Aliase (eine Zeile pro Alias):</div>
+      <textarea name="aliases" rows="4" placeholder="volkswagen leasing
+vwfs
+volkswagen bank"></textarea>
+      <div style="margin-top: 10px;">
+        <button type="submit">Speichern</button>
+      </div>
     </form>
 
-    <h2 style="margin-top: 14px;">Vorhandene Aliase</h2>
+    <h2 style="margin-top: 16px;">Vorhandene Aliase</h2>
     {% if aliases and aliases|length > 0 %}
-      {% for canon, als in aliases.items() %}
+      {% for canon, als in aliases|dictsort %}
         <div class="card" style="margin-top: 10px;">
-          <div><b>{{ canon }}</b>
-            <form method="post" action="/action/aliases/delete" style="display:inline; margin-left: 8px;">
+          <div style="display:flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <div style="font-weight: 700;">{{ canon }}</div>
+            <form method="post" action="/action/aliases/delete" style="display:inline;">
               <input type="hidden" name="canonical" value="{{ canon }}" />
               <button type="submit">Firma löschen</button>
             </form>
           </div>
+
           {% if als %}
-            <ul>
-              {% for a in als %}
-                <li>
+            <div class="chips">
+              {% for a in als|sort %}
+                <div class="chip">
                   <code>{{ a }}</code>
-                  <form method="post" action="/action/aliases/delete" style="display:inline; margin-left: 8px;">
+                  <form method="post" action="/action/aliases/delete">
                     <input type="hidden" name="canonical" value="{{ canon }}" />
                     <input type="hidden" name="alias" value="{{ a }}" />
-                    <button type="submit">Alias löschen</button>
+                    <button type="submit">Löschen</button>
                   </form>
-                </li>
+                </div>
               {% endfor %}
-            </ul>
+            </div>
           {% else %}
-            <div class="muted">(keine Aliase)</div>
+            <div class="muted" style="margin-top: 8px;">(keine Aliase)</div>
           {% endif %}
         </div>
       {% endfor %}
