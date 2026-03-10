@@ -19,3 +19,14 @@ vosk-models/
 
 # private notes
 memory/
+
+# OpenClaw local config / personal notes (DO NOT COMMIT)
+AGENTS.md
+BOOTSTRAP.md
+HEARTBEAT.md
+IDENTITY.md
+MEMORY.md
+SOUL.md
+TOOLS.md
+USER.md
+memory/
