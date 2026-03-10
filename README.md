@@ -80,7 +80,7 @@ source .venv/bin/activate
 python -m pip install --upgrade pip
 ```
 
-> Hinweis: Die benötigten Pakete werden i.d.R. über `pip install ...` installiert. Falls du eine `requirements.txt` für den Root-Runner willst, sag Bescheid – kann ich ergänzen.
+Die benötigten Pakete kannst du jetzt direkt über die `requirements.txt` installieren (siehe oben). Für das Dashboard gibt es zusätzlich: `SortmyPDFs/dashboard/requirements.txt`.
 
 ---
 
