@@ -16,3 +16,6 @@ SortmyPDFs/.env
 copilot-multimodal/
 voice.wav
 vosk-models/
+
+# private notes
+memory/

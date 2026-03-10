@@ -27,6 +27,9 @@
     "Euradia",
     "Euradia1"
   ],
+  "Gothaer Allgemeine Versicherung": [
+    "Gothaer"
+  ],
   "HDI": [
     "HDI"
   ],
@@ -36,11 +39,24 @@
   "Krankenschein": [
     "Arbeitsunfähigkeits"
   ],
+  "Landkreis Gifhorn Müll": [
+    "Abfallgebühr",
+    "Landkreis Gifhorn"
+  ],
   "Lohnsteuerhilfeverein": [
     "Lohnsteuerhilfeverein"
   ],
   "LSW": [
     "LSW GmBH"
+  ],
+  "net Services GmbH": [
+    "net Services GmbH"
+  ],
+  "Ohlendorf": [
+    "Ohlendorf"
+  ],
+  "Uelzener": [
+    "Uelzener"
   ],
   "VfL Wolfsburg": [
     "VfL Wolfsburg-Fußball"
@@ -50,6 +66,9 @@
     "volkswagen bank",
     "volkswagen leasing",
     "vwfs"
+  ],
+  "Wasserverband": [
+    "Wasserverband Gifhorn"
   ],
   "WWK": [
     "WWK"
