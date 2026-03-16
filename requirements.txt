@@ -1,0 +1,11 @@
+# SortmyPDFs – Python dependencies
+#
+# Core (OneDrive/Graph + OCR-based sorting):
+#   pip install -r requirements.txt
+#
+# Dashboard (optional):
+#   pip install -r SortmyPDFs/dashboard/requirements.txt
+
+msal>=1.28.0
+requests>=2.31.0
+python-dotenv>=1.0.1
