@@ -184,7 +184,7 @@ def _build_state_tree(processed: dict[str, Any]) -> dict[str, Any]:
     return root
 
 
-LOG_TS_RE = re.compile(r"hourly-(\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2}Z)\\.log$")
+LOG_TS_RE = re.compile(r"hourly-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)\.log$")
 
 
 def _parse_log_ts(name: str) -> datetime | None:
@@ -364,6 +364,14 @@ EMPTY_SCAN_RUNNING: bool = False
 
 # runtime cache for merge proposals
 MERGE_PROPOSALS: list[dict[str, Any]] = []
+
+
+_GRAPH_ID_RE = re.compile(r"^[A-Za-z0-9!_\-.:]{4,512}$")
+
+
+def _valid_graph_id(value: str) -> bool:
+    """Return True only if *value* looks like a valid OneDrive/Graph item ID."""
+    return bool(value and _GRAPH_ID_RE.match(value))
 
 
 def _set_last(action: str, ok: bool, detail: str | None = None):
@@ -574,6 +582,9 @@ async def action_reprocess(request: Request):
     if not item_id:
         _set_last("reprocess", False, "Missing item_id")
         return RedirectResponse(url="/", status_code=303)
+    if not _valid_graph_id(item_id):
+        _set_last("reprocess", False, "Invalid item_id format")
+        return RedirectResponse(url="/", status_code=303)
 
     py = BASE / ".venv" / "bin" / "python"
     cmd = [str(py), "sort_and_move.py", "--apply", "--reprocess", item_id]
@@ -707,6 +718,11 @@ async def action_empty_delete(request: Request):
 
     if not ids:
         _set_last("empty-folders delete", False, "No folders selected")
+        return RedirectResponse(url="/", status_code=303)
+
+    invalid = [i for i in ids if not _valid_graph_id(str(i))]
+    if invalid:
+        _set_last("empty-folders delete", False, f"Invalid folder_id format: {invalid[:3]}")
         return RedirectResponse(url="/", status_code=303)
 
     # delete deepest first based on cached paths
@@ -944,6 +960,16 @@ async def action_merge_apply(request: Request):
     if not moves:
         _set_last("merge apply", False, "No folders selected")
         return RedirectResponse(url="/", status_code=303)
+
+    # Validate all IDs before any network calls
+    for spec in moves:
+        if "->" not in spec:
+            _set_last("merge apply", False, f"Invalid move spec (missing '->'): {spec[:80]}")
+            return RedirectResponse(url="/", status_code=303)
+        sid, tid = spec.split("->", 1)
+        if not _valid_graph_id(sid) or not _valid_graph_id(tid):
+            _set_last("merge apply", False, f"Invalid Graph ID in move spec: {spec[:80]}")
+            return RedirectResponse(url="/", status_code=303)
 
     # Safety preflight: count how many children would be moved
     counts: list[tuple[str, int]] = []

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE="/home/tim/.openclaw/workspace/SortmyPDFs"
+BASE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="$BASE/logs"
 TS="$(date -u +'%Y-%m-%dT%H-%M-%SZ')"
 LOG_FILE="$LOG_DIR/hourly-$TS.log"
