@@ -4,6 +4,8 @@ Automatisches Einsammeln, OCR, Umbenennen und Einsortieren von PDF-Dokumenten au
 
 Repo: https://github.com/rinkelzz/SortmyPDFs
 
+> **Neu hier?** → [Ausführliche Installationsanleitung (INSTALL.md)](INSTALL.md)
+
 ---
 
 ## Was macht das Tool?
