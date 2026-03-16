@@ -32,7 +32,9 @@ Der eigentliche Code liegt unter:
   - `sort_and_move.py` (Hauptlauf: sortieren/umbenennen/verschieben)
   - `auth_device_code.py` (OneDrive/Graph Device Code Flow)
   - `imap_ingest.py` (optional: PDFs aus IMAP nach OneDrive-Inbox)
+  - `firma_aliases.json` (Firmen-Alias-Zuordnungen für die Erkennung)
   - `dashboard/` (optional: Web-Dashboard)
+- `tests/` (Unit-Tests für die Erkennungslogik)
 
 Zusätzliche Details/Notizen sind auch hier dokumentiert:
 - `SortmyPDFs/README.md`
@@ -194,6 +196,61 @@ Eine Beispielkonfiguration (Service+Timer) findest du ausführlich in:
 
 ---
 
+## Erkennungslogik im Detail
+
+Die Klassifikation in `sort_and_move.py` arbeitet rein regelbasiert (kein ML/KI) und nutzt OCR-Text + Dateiname als Eingabe.
+
+### Empfänger (`pick_recipient`)
+
+Prüft OCR-Text und Dateiname auf bekannte Vor-/Nachnamen. Reihenfolge (first match wins):
+
+1. `"chantal"` im Text oder Dateiname → **Chantal**
+2. `"tim"` + `"rinkel"` im Text, oder `"Herrn"` + `"rinkel"` → **Tim**
+3. `"tim"` oder `"rinkel"` nur im Dateinamen → **Tim** (Fallback)
+4. Sonst → **Sonstige**
+
+### Firma/Absender (`pick_firma`)
+
+Mehrstufige Erkennung mit folgender Priorität:
+
+1. **Hardcoded Spezialfälle**: z.B. `HDI` wird immer sofort erkannt.
+2. **Alias-Datei** (`firma_aliases.json`): Benutzerdefinierte Zuordnungen (Substring-Match, case-insensitive). Beispiel: `"Gothaer"` → `"Gothaer Allgemeine Versicherung"`.
+3. **OCR-Heuristik**: Sucht in den ersten 25 Zeilen nach Organisationsmarkern wie `GmbH`, `AG`, `eG`, `Versicherung`, `Krankenkasse`, `Bank` etc.
+4. **Dateiname**: Extrahiert den Firmennamen vor Schlüsselwörtern wie `Rechnung`, `Laborbefund`, `Kaufvertrag`.
+5. **Fallback**: Erste 5 Wörter des Dateinamens oder `"Unbekannt"`.
+
+Firmennamen werden über `firma_key()` normalisiert (case-insensitive, ohne Rechtsformen wie GmbH/AG), um Duplikate zu vermeiden. Existierende Ordner werden automatisch wiederverwendet.
+
+### Dokumenttyp (`pick_doc_type`)
+
+Einfaches Keyword-Matching (first match wins) in Text + Dateiname:
+
+| Keyword              | Ergebnis           |
+|----------------------|--------------------|
+| `beitragsrechnung`   | Beitragsrechnung   |
+| `rechnung`           | Rechnung           |
+| `kaufvertrag`        | Kaufvertrag        |
+| `laborbefund`        | Laborbefund        |
+| `bescheid`           | Bescheid           |
+| *(keins gefunden)*   | Dokument           |
+
+### Datum (`pick_date`)
+
+1. **OCR-Text**: Sammelt alle Daten im Format `DD.MM.YYYY` (auch `DD.MM.YY`), filtert vor 2010 und nach 2035 raus. Bevorzugt Daten nahe typischer Briefkopf-Muster (Komma, Stadtname im Kontext).
+2. **Dateiname**: Falls der Name mit `YYYY-MM-DD` beginnt, wird das als starker Fallback genutzt.
+3. **OneDrive `createdDateTime`**: Letzter Fallback.
+
+### Tests
+
+```bash
+cd SortmyPDFs
+python -m pytest tests/ -v
+```
+
+Die Tests decken alle oben genannten Erkennungsfunktionen ab (43 Tests).
+
+---
+
 ## Troubleshooting (kurz)
 
 - **OCR fehlt / schlechte Erkennung**: prüfen, ob `pdftoppm` und `tesseract` installiert sind.
@@ -204,4 +261,4 @@ Eine Beispielkonfiguration (Service+Timer) findest du ausführlich in:
 
 ## Lizenz
 
-Noch nicht festgelegt (aktuell „all rights reserved“ / privat). Wenn du willst, kann ich eine passende Lizenz (MIT/Apache-2.0/GPLv3) vorschlagen und hinzufügen.
+MIT – siehe [LICENSE](LICENSE).

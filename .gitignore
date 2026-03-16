@@ -1,32 +1,26 @@
-# generated
+# === Generated / runtime ===
 out/
 update-*.log
+
+# === SortmyPDFs runtime artifacts ===
 SortmyPDFs/.tmp/
 SortmyPDFs/.venv/
 SortmyPDFs/.token_cache.bin
 SortmyPDFs/state.json
 SortmyPDFs/state_imap.json
 SortmyPDFs/logs/
-SortmyPDFs/__pycache__/
-SortmyPDFs/dashboard/__pycache__/
 SortmyPDFs/.env
 
-# local agent/runtime artifacts
-.openclaw/
-copilot-multimodal/
-voice.wav
-vosk-models/
+# === Python ===
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
 
-# private notes
-memory/
+# === IDE ===
+.vscode/
+.idea/
 
-# OpenClaw local config / personal notes (DO NOT COMMIT)
-AGENTS.md
-BOOTSTRAP.md
-HEARTBEAT.md
-IDENTITY.md
-MEMORY.md
-SOUL.md
-TOOLS.md
-USER.md
-memory/
+# === OS ===
+.DS_Store
+Thumbs.db

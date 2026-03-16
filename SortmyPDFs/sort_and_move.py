@@ -4,7 +4,7 @@ import json
 import time
 import shutil
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import msal
@@ -327,7 +327,7 @@ def pick_doc_type(text: str, fallback_name: str) -> str:
 
 def pick_date(text: str, created_dt: str, fallback_name: str) -> str:
     # If filename starts with YYYY-MM-DD, treat as strong fallback (often correct for scans)
-    mfn = re.match(r"^(\d{4})-(\d{2})-(\d{2})\b", fallback_name)
+    mfn = re.match(r"^(\d{4})-(\d{2})-(\d{2})(?=[^0-9]|$)", fallback_name)
     fn_date = None
     if mfn:
         try:
@@ -374,7 +374,7 @@ def pick_date(text: str, created_dt: str, fallback_name: str) -> str:
         dt = datetime.fromisoformat(created_dt.replace("Z", "+00:00"))
         return dt.strftime("%Y-%m-%d")
     except Exception:
-        return datetime.utcnow().strftime("%Y-%m-%d")
+        return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
 def ensure_folder(token, path: str):
