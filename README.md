@@ -67,22 +67,52 @@ sudo apt install -y poppler-utils tesseract-ocr tesseract-ocr-deu
 
 ## Installation
 
-### 1) Repo klonen
+### Schnellstart (empfohlen)
+
+Nach dem Klonen einfach den Installer ausführen – er erledigt alles automatisch:
+
+```bash
+git clone https://github.com/rinkelzz/SortmyPDFs.git
+cd SortmyPDFs
+chmod +x install.sh
+./install.sh
+```
+
+Der Installer führt dich durch:
+- Systemabhängigkeiten installieren (`poppler-utils`, `tesseract`)
+- Python-venv + Pakete einrichten
+- `.env` interaktiv befüllen (Graph Client-ID, IMAP etc.)
+- systemd --user Units installieren (stündlicher Timer + Dashboard-Service)
+- OneDrive-Einmalanmeldung (Device Code Flow) starten
+
+**Optionen:**
+```bash
+./install.sh --no-dashboard   # Dashboard-Service überspringen
+./install.sh --no-imap        # IMAP-Felder in .env überspringen
+./install.sh --dry-run        # Nur anzeigen, was gemacht würde
+```
+
+---
+
+### Manuell (Schritt für Schritt)
+
+#### 1) Repo klonen
 ```bash
 git clone https://github.com/rinkelzz/SortmyPDFs.git
 cd SortmyPDFs
 ```
 
-### 2) Python venv erstellen
-Die venv liegt (wie im Projekt vorgesehen) im Unterordner `SortmyPDFs/.venv/`:
+#### 2) Python venv erstellen
+Die venv liegt im Unterordner `SortmyPDFs/.venv/`:
 ```bash
 cd SortmyPDFs
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
+pip install -r requirements.txt
 ```
 
-Die benötigten Pakete kannst du jetzt direkt über die `requirements.txt` installieren (siehe oben). Für das Dashboard gibt es zusätzlich: `SortmyPDFs/dashboard/requirements.txt`.
+Für das Dashboard zusätzlich: `pip install -r dashboard/requirements.txt`.
 
 ---
 

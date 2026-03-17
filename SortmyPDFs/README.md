@@ -51,7 +51,7 @@ Hinweis: `offline_access`/`openid`/`profile` sind in MSAL (device code flow) res
   - `cp .env.example .env`
 
 ### 1) venv aktivieren
-- `cd /home/tim/.openclaw/workspace/SortmyPDFs`
+- `cd /pfad/zu/SortmyPDFs`
 - `source .venv/bin/activate`
 
 ### 2) OneDrive Auth (einmalig)
@@ -98,7 +98,7 @@ Es zeigt u.a.:
 - Firmen-Aliase anlegen (Text-enthält Matching) über `firma_aliases.json` / Dashboard
 
 ### Start (lokal)
-- `cd /home/tim/.openclaw/workspace/SortmyPDFs`
+- `cd /pfad/zu/SortmyPDFs`
 - `source .venv/bin/activate`
 - `pip install -r dashboard/requirements.txt`
 - `uvicorn dashboard.app:app --host 127.0.0.1 --port 8080`
@@ -141,9 +141,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/tim/.openclaw/workspace/SortmyPDFs
-EnvironmentFile=/home/tim/.config/sortmypdfs-dashboard.env
-ExecStart=/home/tim/.openclaw/workspace/SortmyPDFs/.venv/bin/uvicorn dashboard.app:app --host 0.0.0.0 --port 8080
+WorkingDirectory=/pfad/zu/SortmyPDFs
+EnvironmentFile=%h/.config/sortmypdfs-dashboard.env
+ExecStart=/pfad/zu/SortmyPDFs/.venv/bin/uvicorn dashboard.app:app --host 0.0.0.0 --port 8080
 Restart=on-failure
 RestartSec=2
 
@@ -188,8 +188,8 @@ Description=SortmyPDFs hourly ingest+sort (IMAP -> OneDrive -> rename/move)
 
 [Service]
 Type=oneshot
-WorkingDirectory=/home/tim/.openclaw/workspace/SortmyPDFs
-ExecStart=/home/tim/.openclaw/workspace/SortmyPDFs/run_hourly.sh
+WorkingDirectory=/pfad/zu/SortmyPDFs
+ExecStart=/pfad/zu/SortmyPDFs/run_hourly.sh
 ```
 
 `~/.config/systemd/user/sortmypdfs.timer`
@@ -216,7 +216,7 @@ Status/Debug:
 ```bash
 systemctl --user status sortmypdfs.timer
 systemctl --user -u sortmypdfs.service --no-pager -n 200
-ls -lt /home/tim/.openclaw/workspace/SortmyPDFs/logs | head
+ls -lt /pfad/zu/SortmyPDFs/logs | head
 ```
 
 ### Konfiguration (`.env`)
