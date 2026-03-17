@@ -4,6 +4,7 @@ import argparse
 import email
 import hashlib
 import imaplib
+import json
 import logging
 from typing import Iterator
 import os
@@ -64,14 +65,10 @@ def save_state(state: dict) -> None:
 
 
 def json_load(path: Path) -> dict:
-    import json
-
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def json_dumps(obj: dict) -> str:
-    import json
-
     return json.dumps(obj, indent=2, ensure_ascii=False, sort_keys=True)
 
 

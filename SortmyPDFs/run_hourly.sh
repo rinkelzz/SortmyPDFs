@@ -16,6 +16,10 @@ mkdir -p "$LOG_DIR"
   cd "$BASE"
   # Use venv python directly (no interactive shell assumptions)
   PY="$BASE/.venv/bin/python"
+  if [[ ! -x "$PY" ]]; then
+    echo "ERROR: venv not found at $PY – run install.sh first." >&2
+    exit 1
+  fi
 
   echo "[1/2] IMAP ingest (UNSEEN, delete on success)"
   "$PY" imap_ingest.py --delete
