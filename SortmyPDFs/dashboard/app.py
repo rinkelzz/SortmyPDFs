@@ -191,9 +191,6 @@ def _parse_log_ts(name: str) -> datetime | None:
     m = LOG_TS_RE.search(name)
     if not m:
         return None
-    # format: 2026-03-08T11-00-49Z
-    s = m.group(1).replace("-", ":", 2).replace("-", ":", 1)  # nope, not safe
-    # safer manual parse:
     raw = m.group(1)
     # YYYY-MM-DDTHH-MM-SSZ
     try:
@@ -297,27 +294,21 @@ def _list_children_by_path(headers: dict[str, str], path: str, select: str = "id
     return out
 
 
-def _folder_key(name: str) -> str:
-    # keep in sync with sort_and_move.py's firma_key logic (roughly)
-    s = name.casefold()
-    s = re.sub(r"[\._,;:()\[\]{}+|]", " ", s)
-    s = s.replace("-", " ")
-    s = re.sub(r"\s+", " ", s).strip()
-    drop = {
-        "gmbh",
-        "ag",
-        "eg",
-        "kg",
-        "se",
-        "mbh",
-        "gbr",
-        "ev",
-        "e.v",
-        "a.g",
-        "versicherung",
-    }
-    words = [w for w in s.split(" ") if w and w not in drop]
-    return " ".join(words)
+try:
+    from sort_and_move import firma_key as _folder_key  # noqa: E402
+except ImportError:
+    # Fallback if sort_and_move is not importable (e.g. missing .env)
+    def _folder_key(name: str) -> str:
+        s = name.casefold()
+        s = re.sub(r"[\._,;:()\[\]{}+|]", " ", s)
+        s = s.replace("-", " ")
+        s = re.sub(r"\s+", " ", s).strip()
+        drop = {
+            "gmbh", "ag", "eg", "kg", "se", "mbh", "gbr",
+            "ev", "e.v", "a.g", "versicherung",
+        }
+        words = [w for w in s.split(" ") if w and w not in drop]
+        return " ".join(words)
 
 
 def _onedrive_inbox_live(limit: int = 10) -> tuple[int | None, list[dict[str, Any]] | None, str | None]:
@@ -662,7 +653,6 @@ def _scan_empty_folders_under_root(root_path: str = "SortmyPDFs") -> tuple[bool,
     return True, f"Found {len(empty)} empty folders under /{root_path}."
 
 
-@app.post("/action/empty-folders/scan")
 def _start_empty_scan_async(root: str = "SortmyPDFs") -> tuple[bool, str]:
     global EMPTY_SCAN_RUNNING
 
@@ -687,6 +677,7 @@ def _start_empty_scan_async(root: str = "SortmyPDFs") -> tuple[bool, str]:
     return True, "Started"
 
 
+@app.post("/action/empty-folders/scan")
 def action_empty_scan(request: Request):
     _require_auth(request)
     if not ENABLE_BUTTONS:
@@ -695,7 +686,7 @@ def action_empty_scan(request: Request):
     ok, detail = _start_empty_scan_async("SortmyPDFs")
     if not ok:
         _set_last("empty-folders scan", False, detail)
-    return RedirectResponse(url="/", status_code=303)
+    return RedirectResponse(url="/empty-folders", status_code=303)
 
 
 @app.post("/action/empty-folders/delete")

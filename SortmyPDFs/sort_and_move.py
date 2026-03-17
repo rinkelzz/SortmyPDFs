@@ -116,7 +116,7 @@ def graph(method: str, url: str, token: str, _retries: int = 3, _backoff: float 
                 time.sleep(retry_after)
                 continue
             return resp
-        except requests.exceptions.ConnectionError as exc:
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as exc:
             last_exc = exc
             if attempt < _retries:
                 wait = _backoff * (2 ** attempt)
@@ -173,7 +173,7 @@ def _find_bin(name: str) -> str:
         f"/usr/bin/{name}",
         f"/usr/local/bin/{name}",
         f"/home/linuxbrew/.linuxbrew/bin/{name}",
-        f"/home/tim/.linuxbrew/bin/{name}",
+        str(Path.home() / ".linuxbrew" / "bin" / name),
     ]
     for c in candidates:
         if Path(c).exists():
@@ -212,17 +212,24 @@ def ocr_first_page(pdf_path: Path) -> str:
     img = candidates[0]
 
     out_base = TMP_DIR / (pdf_path.stem + "-ocr")
-    subprocess.run([
-        tesseract,
-        str(img),
-        str(out_base),
-        "-l",
-        "deu",
-        "--psm",
-        "6",
-    ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    txt_path = Path(str(out_base) + ".txt")
-    return txt_path.read_text(encoding="utf-8", errors="ignore")
+    try:
+        subprocess.run([
+            tesseract,
+            str(img),
+            str(out_base),
+            "-l",
+            "deu",
+            "--psm",
+            "6",
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        txt_path = Path(str(out_base) + ".txt")
+        return txt_path.read_text(encoding="utf-8", errors="ignore")
+    finally:
+        # Clean up temp OCR artifacts
+        for f in candidates:
+            f.unlink(missing_ok=True)
+        txt_path = Path(str(out_base) + ".txt")
+        txt_path.unlink(missing_ok=True)
 
 
 def pick_recipient(text: str, fallback_name: str) -> str:
@@ -295,9 +302,17 @@ def firma_key(name: str) -> str:
     return " ".join(words)
 
 
+_ALIASES_CACHE: dict[str, list[str]] | None = None
+_ALIASES_MTIME: float = 0.0
+
+
 def load_aliases() -> dict[str, list[str]]:
+    global _ALIASES_CACHE, _ALIASES_MTIME
     try:
         if ALIASES_PATH.exists():
+            mtime = ALIASES_PATH.stat().st_mtime
+            if _ALIASES_CACHE is not None and mtime == _ALIASES_MTIME:
+                return _ALIASES_CACHE
             data = json.loads(ALIASES_PATH.read_text(encoding="utf-8"))
             if isinstance(data, dict):
                 out: dict[str, list[str]] = {}
@@ -306,6 +321,8 @@ def load_aliases() -> dict[str, list[str]]:
                         continue
                     if isinstance(v, list):
                         out[k] = [str(x) for x in v if str(x).strip()]
+                _ALIASES_CACHE = out
+                _ALIASES_MTIME = mtime
                 return out
     except json.JSONDecodeError as exc:
         log.error("firma_aliases.json is malformed and could not be loaded: %s", exc)
@@ -468,14 +485,18 @@ def ensure_folder(token, path: str):
 def list_child_folders_by_path(token: str, path: str) -> list[dict]:
     """List direct child folders under a given OneDrive path."""
 
-    url = (
+    url: str | None = (
         f"https://graph.microsoft.com/v1.0/me/drive/root:/{path}:/children"
         "?$select=id,name,folder"
     )
-    res = graph("GET", url, token)
-    res.raise_for_status()
-    items = res.json().get("value", [])
-    return [it for it in items if it.get("folder")]
+    all_items: list[dict] = []
+    while url:
+        res = graph("GET", url, token)
+        res.raise_for_status()
+        data = res.json()
+        all_items.extend(data.get("value", []))
+        url = data.get("@odata.nextLink")
+    return [it for it in all_items if it.get("folder")]
 
 
 def resolve_existing_firma_folder(token: str, recipient: str, firma: str) -> str:
