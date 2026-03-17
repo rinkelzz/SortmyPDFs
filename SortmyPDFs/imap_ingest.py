@@ -1,7 +1,11 @@
+from __future__ import annotations
+
 import argparse
 import email
 import hashlib
 import imaplib
+import logging
+from typing import Iterator
 import os
 import re
 import ssl
@@ -17,6 +21,8 @@ from sort_and_move import get_token  # noqa: E402
 
 BASE = Path(__file__).resolve().parent
 load_dotenv(BASE / ".env")
+
+log = logging.getLogger("imap_ingest")
 
 IMAP_HOST = os.getenv("IMAP_HOST")
 IMAP_PORT = int(os.getenv("IMAP_PORT", "993"))
@@ -51,10 +57,10 @@ def load_state() -> dict:
 
 
 def save_state(state: dict) -> None:
-    STATE_PATH.write_text(
-        json_dumps(state),
-        encoding="utf-8",
-    )
+    """Write state atomically to avoid corruption if interrupted mid-write."""
+    tmp = STATE_PATH.with_suffix(".tmp")
+    tmp.write_text(json_dumps(state), encoding="utf-8")
+    tmp.replace(STATE_PATH)
 
 
 def json_load(path: Path) -> dict:
@@ -69,7 +75,7 @@ def json_dumps(obj: dict) -> str:
     return json.dumps(obj, indent=2, ensure_ascii=False, sort_keys=True)
 
 
-def graph_put(url: str, token: str, data: bytes, content_type: str = "application/pdf"):
+def graph_put(url: str, token: str, data: bytes, content_type: str = "application/pdf") -> requests.Response:
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": content_type,
@@ -131,7 +137,7 @@ def upload_pdf_to_inbox(token: str, filename: str, data: bytes) -> dict:
     return upload_bytes_large(token, onedrive_path, data)
 
 
-def iter_pdf_attachments(msg: email.message.Message):
+def iter_pdf_attachments(msg: email.message.Message) -> Iterator[tuple[str, bytes]]:
     for part in msg.walk():
         if part.is_multipart():
             continue
@@ -190,7 +196,7 @@ def main():
 
         uids = [u for u in data[0].split() if u]
         if not uids:
-            print("No messages to process.")
+            log.info("No messages to process.")
             return
 
         any_changes = False
@@ -202,7 +208,7 @@ def main():
 
             typ, msg_data = imap.uid("fetch", uid, "(RFC822)")
             if typ != "OK" or not msg_data or not msg_data[0]:
-                print(f"WARN: Failed to fetch UID {uid_s}")
+                log.warning("Failed to fetch UID %s", uid_s)
                 continue
 
             raw = msg_data[0][1]
@@ -234,7 +240,7 @@ def main():
                     any_changes = True
                 except Exception as e:
                     success = False
-                    print(f"ERROR: Upload failed for UID {uid_s} attachment {filename}: {e}")
+                    log.error("Upload failed for UID %s attachment %s: %s", uid_s, filename, e)
 
             processed_uids[uid_s] = {
                 "ts": datetime.now(timezone.utc).isoformat(),
@@ -254,7 +260,7 @@ def main():
         if any_changes:
             save_state(state)
 
-        print(f"Done. processed={len(processed_uids)} deleted={deleted}")
+        log.info("Done. processed=%d deleted=%d", len(processed_uids), deleted)
 
     finally:
         try:

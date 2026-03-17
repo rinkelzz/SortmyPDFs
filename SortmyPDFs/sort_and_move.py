@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import logging
 import os
 import re
 import json
@@ -13,6 +16,33 @@ from dotenv import load_dotenv
 
 BASE = Path(__file__).resolve().parent
 load_dotenv(BASE / ".env")
+
+# ---------------------------------------------------------------------------
+# Logging setup
+# ---------------------------------------------------------------------------
+_LOG_LEVEL = os.getenv("SORTMYPDFS_LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, _LOG_LEVEL, logging.INFO),
+    format="%(asctime)s %(levelname)s %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%SZ",
+)
+log = logging.getLogger("sort_and_move")
+
+
+# ---------------------------------------------------------------------------
+# Configuration validation
+# ---------------------------------------------------------------------------
+def _validate_config() -> None:
+    """Fail fast with a clear message if required env vars are missing."""
+    missing = [k for k in ("GRAPH_CLIENT_ID",) if not os.getenv(k)]
+    if missing:
+        raise SystemExit(
+            f"Missing required environment variable(s): {', '.join(missing)}\n"
+            "Copy .env.example to .env and fill in the values."
+        )
+
+
+_validate_config()
 
 TENANT = os.getenv("GRAPH_TENANT", "consumers")
 CLIENT_ID = os.getenv("GRAPH_CLIENT_ID")
@@ -31,17 +61,20 @@ SESSION = requests.Session()
 FOLDER_CACHE: dict[str, dict[str, dict]] = {}
 
 
-def load_state():
+def load_state() -> dict:
     if STATE_PATH.exists():
         return json.loads(STATE_PATH.read_text(encoding="utf-8"))
     return {"processed": {}}
 
 
-def save_state(state):
-    STATE_PATH.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+def save_state(state: dict) -> None:
+    """Write state atomically to avoid corruption if interrupted mid-write."""
+    tmp = STATE_PATH.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(STATE_PATH)
 
 
-def get_app():
+def get_app() -> tuple[msal.PublicClientApplication, msal.SerializableTokenCache]:
     if not CLIENT_ID:
         raise SystemExit("Missing GRAPH_CLIENT_ID in .env")
     cache = msal.SerializableTokenCache()
@@ -55,7 +88,7 @@ def get_app():
     return app, cache
 
 
-def get_token():
+def get_token() -> str:
     app, cache = get_app()
     accounts = app.get_accounts()
     if not accounts:
@@ -68,25 +101,49 @@ def get_token():
     return result["access_token"]
 
 
-def graph(method, url, token, **kwargs):
+def graph(method: str, url: str, token: str, _retries: int = 3, _backoff: float = 2.0, **kwargs) -> requests.Response:
+    """Make a Graph API request with exponential-backoff retry on transient errors (429/503/5xx)."""
     headers = kwargs.pop("headers", {})
     headers["Authorization"] = f"Bearer {token}"
     headers.setdefault("Accept", "application/json")
-    return SESSION.request(method, url, headers=headers, timeout=60, **kwargs)
+    last_exc: Exception | None = None
+    for attempt in range(_retries + 1):
+        try:
+            resp = SESSION.request(method, url, headers=headers, timeout=60, **kwargs)
+            if resp.status_code in (429, 503) and attempt < _retries:
+                retry_after = float(resp.headers.get("Retry-After", _backoff * (2 ** attempt)))
+                log.warning("Graph API rate-limited (%d). Retrying in %.0fs…", resp.status_code, retry_after)
+                time.sleep(retry_after)
+                continue
+            return resp
+        except requests.exceptions.ConnectionError as exc:
+            last_exc = exc
+            if attempt < _retries:
+                wait = _backoff * (2 ** attempt)
+                log.warning("Graph API connection error (attempt %d/%d). Retrying in %.0fs…", attempt + 1, _retries, wait)
+                time.sleep(wait)
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("graph() exhausted retries without a response")
 
 
-def list_inbox_pdfs(token):
-    url = (
+def list_inbox_pdfs(token: str) -> list[dict]:
+    """List all PDF files in the inbox folder, following @odata.nextLink for pagination."""
+    url: str | None = (
         f"https://graph.microsoft.com/v1.0/me/drive/root:/{INBOX}:/children"
         "?$select=id,name,createdDateTime,lastModifiedDateTime,file"
     )
-    res = graph("GET", url, token)
-    res.raise_for_status()
-    items = res.json().get("value", [])
-    return [it for it in items if it.get("file") and it["name"].lower().endswith(".pdf")]
+    all_items: list[dict] = []
+    while url:
+        res = graph("GET", url, token)
+        res.raise_for_status()
+        data = res.json()
+        all_items.extend(data.get("value", []))
+        url = data.get("@odata.nextLink")
+    return [it for it in all_items if it.get("file") and it["name"].lower().endswith(".pdf")]
 
 
-def download_item(token, item_id, out_path: Path):
+def download_item(token: str, item_id: str, out_path: Path) -> None:
     """Download file contents via Graph.
 
     Note: For some account types/permissions, `@microsoft.graph.downloadUrl` may not be returned.
@@ -250,8 +307,10 @@ def load_aliases() -> dict[str, list[str]]:
                     if isinstance(v, list):
                         out[k] = [str(x) for x in v if str(x).strip()]
                 return out
-    except Exception:
-        pass
+    except json.JSONDecodeError as exc:
+        log.error("firma_aliases.json is malformed and could not be loaded: %s", exc)
+    except OSError as exc:
+        log.error("Could not read firma_aliases.json: %s", exc)
     return {}
 
 
@@ -373,7 +432,7 @@ def pick_date(text: str, created_dt: str, fallback_name: str) -> str:
     try:
         dt = datetime.fromisoformat(created_dt.replace("Z", "+00:00"))
         return dt.strftime("%Y-%m-%d")
-    except Exception:
+    except (ValueError, AttributeError):
         return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
@@ -431,7 +490,8 @@ def resolve_existing_firma_folder(token: str, recipient: str, firma: str) -> str
         m: dict[str, dict] = {}
         try:
             folders = list_child_folders_by_path(token, parent_path)
-        except Exception:
+        except requests.exceptions.RequestException as exc:
+            log.warning("Could not list folders under %s: %s", parent_path, exc)
             folders = []
         for f in folders:
             name = str(f.get("name") or "")
@@ -532,15 +592,14 @@ def process_item(token: str, state: dict, it: dict, apply: bool) -> None:
         else:
             dest_path = f"{TARGET_ROOT}/{recipient}/{firma}"
 
-        print("---")
-        print("id:", item_id)
-        print("src:", name)
-        print("recipient:", recipient)
-        print("firma:", firma)
-        print("date:", date)
-        print("type:", doc_type)
-        print("dest:", dest_path)
-        print("new:", new_name)
+        log.info("--- %s", name)
+        log.info("  id:        %s", item_id)
+        log.info("  recipient: %s", recipient)
+        log.info("  firma:     %s", firma)
+        log.info("  date:      %s", date)
+        log.info("  type:      %s", doc_type)
+        log.info("  dest:      %s", dest_path)
+        log.info("  new_name:  %s", new_name)
 
         if apply:
             # ensure folder chain
@@ -555,15 +614,15 @@ def process_item(token: str, state: dict, it: dict, apply: bool) -> None:
                 "ts": time.time(),
             }
             save_state(state)
-            print("APPLIED")
+            log.info("  APPLIED")
         else:
-            print("DRY_RUN")
+            log.info("  DRY_RUN")
 
     finally:
         try:
             if local_pdf.exists():
                 local_pdf.unlink()
-        except Exception:
+        except OSError:
             pass
 
 
@@ -581,7 +640,7 @@ def main(apply: bool = False, reprocess_ids: list[str] | None = None):
 
     pdfs = list_inbox_pdfs(token)
     if not pdfs:
-        print(f"No PDFs found in inbox '{INBOX}'.")
+        log.info("No PDFs found in inbox '%s'.", INBOX)
         return
 
     for it in pdfs:
