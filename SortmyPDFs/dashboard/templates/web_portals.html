@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1>Web Portale</h1>
+  <div class="muted">Konfigurierte Portale aus <code>web_portals.json</code></div>
+
+  {% if buttons_enabled %}
+    <div class="card" style="margin-top: 14px;">
+      <h2 style="margin-top: 0;">Aktionen</h2>
+      <div class="actions">
+        <form method="post" action="/action/run-web">
+          <input type="hidden" name="portal" value="" />
+          <button type="submit">Alle Portale jetzt abrufen</button>
+        </form>
+      </div>
+    </div>
+
+    <h2>Letzte Aktion</h2>
+    <div class="card">
+      {% if last_action.ts %}
+        <div><b>{{ last_action.action }}</b></div>
+        <div class="muted">{{ last_action.ts.isoformat() }}</div>
+        <div style="margin-top: 8px;" class="{{ 'ok' if last_action.ok else 'err' }}">
+          {{ 'OK' if last_action.ok else 'FEHLER' }}
+        </div>
+        {% if last_action.detail %}
+          <pre style="white-space: pre-wrap; font-size: 12px; margin-top: 8px;">{{ last_action.detail }}</pre>
+        {% endif %}
+      {% else %}
+        <div class="muted">Noch keine Aktion ausgelöst.</div>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  <h2>Portale</h2>
+  {% if portals %}
+    {% for portal in portals %}
+      {% set pname = portal.get('name', '?') %}
+      {% set pdocs = web_stats.by_portal.get(pname, []) %}
+      <div class="card" style="margin-top: 12px;">
+        <div style="display:flex; align-items:center; gap: 12px; flex-wrap: wrap;">
+          <h3 style="margin: 0; font-size: 16px;">{{ pname }}</h3>
+          <span class="badge ok">{{ pdocs|length }} hochgeladen</span>
+          {% if buttons_enabled %}
+            <form method="post" action="/action/run-web" style="margin: 0;">
+              <input type="hidden" name="portal" value="{{ pname }}" />
+              <button type="submit" style="padding: 4px 10px; font-size: 13px;">Jetzt abrufen</button>
+            </form>
+          {% endif %}
+        </div>
+
+        <table style="margin-top: 12px;">
+          <tbody>
+            <tr><td class="muted">Login URL</td><td><code>{{ portal.get('login_url', '—') }}</code></td></tr>
+            <tr><td class="muted">Dokumente URL</td><td><code>{{ portal.get('documents_url', '—') }}</code></td></tr>
+            <tr><td class="muted">Username Env</td><td><code>{{ portal.get('username_env', '—') }}</code></td></tr>
+            <tr><td class="muted">Download Selektor</td><td><code>{{ portal.get('download_button_selector') or portal.get('pdf_link_selector') or '—' }}</code></td></tr>
+          </tbody>
+        </table>
+
+        {% if pdocs %}
+          <h3 style="margin-top: 14px;">Zuletzt hochgeladen</h3>
+          <table>
+            <thead><tr><th>Dateiname</th><th>Zeitstempel</th></tr></thead>
+            <tbody>
+            {% for doc in pdocs[:10] %}
+              <tr>
+                <td><code>{{ doc.filename }}</code></td>
+                <td class="muted">{{ doc.ts[:19].replace('T',' ') if doc.ts else '' }}</td>
+              </tr>
+            {% endfor %}
+            {% if pdocs|length > 10 %}
+              <tr><td colspan="2" class="muted">… und {{ pdocs|length - 10 }} weitere</td></tr>
+            {% endif %}
+            </tbody>
+          </table>
+        {% else %}
+          <div class="muted" style="margin-top: 10px;">Noch keine Dokumente hochgeladen.</div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="muted">Keine Portale konfiguriert. <code>web_portals.json</code> anlegen (aus <code>web_portals.example.json</code> kopieren).</div>
+  {% endif %}
+
+  <h2>Gesamt hochgeladen: {{ web_stats.total }}</h2>
+{% endblock %}

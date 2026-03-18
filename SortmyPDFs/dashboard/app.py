@@ -30,6 +30,8 @@ TEMPLATES = Jinja2Templates(directory=str(DASH / "templates"))
 
 STATE_PATH = BASE / "state.json"
 STATE_IMAP_PATH = BASE / "state_imap.json"
+STATE_WEB_PATH = BASE / "state_web.json"
+PORTALS_PATH = BASE / "web_portals.json"
 ALIASES_PATH = BASE / "firma_aliases.json"
 LOG_DIR = BASE / "logs"
 
@@ -230,6 +232,56 @@ def _list_recent_logs(limit: int = 10) -> list[LogSummary]:
     return [_summarize_log(p) for p in logs]
 
 
+def _load_web_stats() -> dict:
+    """Load stats from state_web.json grouped by portal."""
+    state = _load_json(STATE_WEB_PATH)
+    hashes = state.get("processed_hashes", {}) if isinstance(state, dict) else {}
+    by_portal: dict[str, list[dict]] = {}
+    for h, meta in hashes.items():
+        portal = str(meta.get("portal") or "unknown")
+        by_portal.setdefault(portal, []).append({
+            "hash": h,
+            "filename": meta.get("filename", ""),
+            "ts": meta.get("ts", ""),
+        })
+    # Sort each portal's docs by ts descending
+    for docs in by_portal.values():
+        docs.sort(key=lambda d: str(d.get("ts") or ""), reverse=True)
+    return {
+        "total": len(hashes),
+        "by_portal": by_portal,
+    }
+
+
+def _load_web_portals() -> list[dict]:
+    if not PORTALS_PATH.exists():
+        return []
+    try:
+        return json.loads(PORTALS_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+
+def _start_web_ingest_async(portal: str | None = None) -> tuple[bool, str]:
+    """Run web_ingest.py in the background, optionally for a single portal."""
+    import subprocess
+
+    log_path = LOG_DIR / "web-ingest.log"
+    py = BASE / ".venv" / "bin" / "python"
+    cmd = [str(py), "web_ingest.py"]
+    if portal:
+        cmd += ["--portal", portal]
+    try:
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as f:
+            f.write(f"\n=== dashboard trigger { _utc_now().isoformat() } portal={portal or 'all'} ===\n")
+            subprocess.Popen(cmd, cwd=str(BASE), stdout=f, stderr=subprocess.STDOUT)
+        label = f"Portal: {portal}" if portal else "Alle Portale"
+        return True, f"{label} gestartet. Log: {log_path.relative_to(BASE)}"
+    except Exception as e:
+        return False, str(e)
+
+
 def _graph_headers() -> tuple[dict[str, str] | None, str | None]:
     """Return (headers, warning)."""
 
@@ -239,7 +291,7 @@ def _graph_headers() -> tuple[dict[str, str] | None, str | None]:
     load_dotenv(BASE / ".env")
     tenant = os.getenv("GRAPH_TENANT", "consumers")
     client_id = os.getenv("GRAPH_CLIENT_ID")
-    scopes = os.getenv("GRAPH_SCOPES", "Files.ReadWrite.All offline_access").split()
+    scopes = os.getenv("GRAPH_SCOPES", "https://graph.microsoft.com/Files.ReadWrite.All offline_access").split()
 
     if not client_id:
         return None, "GRAPH_CLIENT_ID missing in .env."
@@ -467,6 +519,7 @@ def overview(request: Request):
     recent_logs = _list_recent_logs(limit=12)
     inbox_pdf_count, inbox_items, inbox_warn = _onedrive_inbox_live(limit=10)
 
+    web_stats = _load_web_stats()
     ctx = {
         **_base_ctx(request),
         "title": "SortmyPDFs – Übersicht",
@@ -481,6 +534,7 @@ def overview(request: Request):
         "inbox_items": inbox_items,
         "inbox_warn": inbox_warn,
         "live_inbox_enabled": ENABLE_LIVE_INBOX,
+        "web_total": web_stats["total"],
     }
 
     return TEMPLATES.TemplateResponse("overview.html", ctx)
@@ -536,6 +590,21 @@ def aliases_page(request: Request):
     return TEMPLATES.TemplateResponse("aliases.html", ctx)
 
 
+@app.get("/web-portals", response_class=HTMLResponse)
+def web_portals_page(request: Request):
+    _require_auth(request)
+    portals = _load_web_portals()
+    web_stats = _load_web_stats()
+    ctx = {
+        **_base_ctx(request),
+        "title": "SortmyPDFs – Web Portale",
+        "active": "web",
+        "portals": portals,
+        "web_stats": web_stats,
+    }
+    return TEMPLATES.TemplateResponse("web_portals.html", ctx)
+
+
 @app.post("/action/run")
 def action_run(request: Request):
     _require_auth(request)
@@ -545,6 +614,19 @@ def action_run(request: Request):
     ok, detail = _start_runner_async()
     _set_last("run_hourly.sh", ok, detail)
     return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/action/run-web")
+async def action_run_web(request: Request):
+    _require_auth(request)
+    if not ENABLE_BUTTONS:
+        raise HTTPException(status_code=404)
+
+    form: FormData = await request.form()
+    portal = (form.get("portal") or "").strip() or None
+    ok, detail = _start_web_ingest_async(portal)
+    _set_last(f"web_ingest {'–' + portal if portal else '(alle)'}", ok, detail)
+    return RedirectResponse(url="/web-portals", status_code=303)
 
 
 @app.post("/action/timer/{mode}")
