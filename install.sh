@@ -162,6 +162,10 @@ run "$PIP" install --upgrade pip --quiet
 run "$PIP" install -r "$APP_DIR/requirements.txt" --quiet
 ok "Core-Pakete installiert."
 
+info "Installiere Playwright-Browser (Chromium, einmalig) …"
+run "$VENV/bin/playwright" install chromium
+ok "Chromium installiert."
+
 if ! $SKIP_DASHBOARD; then
     info "Installiere Python-Pakete (Dashboard) …"
     run "$PIP" install -r "$APP_DIR/dashboard/requirements.txt" --quiet
