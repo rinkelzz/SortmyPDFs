@@ -1,0 +1,18 @@
+[
+  {
+    "_comment": "WWK Lebensversicherung – OpenAM SSO Portal",
+    "name": "WWK",
+    "login_url": "https://my.wwk.de/",
+    "username_env": "WWK_USER",
+    "password_env": "WWK_PASS",
+    "cookie_consent_selector": "button:has-text('OK'), .cookie-ok, #onetrust-accept-btn-handler",
+    "username_selector": "input[placeholder='Benutzername'], input[name='IDToken1'], #IDToken1",
+    "password_selector": "input[placeholder='Passwort'], input[type='password']",
+    "submit_selector": "button:has-text('ANMELDEN'), input[type='submit'], #loginButton_0",
+    "wait_after_login": ".user-info, .welcome, #layout-column_column-1, nav, .portal-header",
+    "documents_url": "https://wwkinside.wwk.de/group/portal/meine-dokumente",
+    "documents_nav_selector": "a:has-text('Meine Dokumente'), a:has-text('Dokumente'), a:has-text('Postfach')",
+    "pdf_link_selector": "",
+    "download_button_selector": "a[href='#']"
+  }
+]
