@@ -32,6 +32,8 @@ Der eigentliche Code liegt unter:
   - `sort_and_move.py` (Hauptlauf: sortieren/umbenennen/verschieben)
   - `auth_device_code.py` (OneDrive/Graph Device Code Flow)
   - `imap_ingest.py` (optional: PDFs aus IMAP nach OneDrive-Inbox)
+  - `web_ingest.py` (optional: PDFs aus Web-Portalen per Playwright nach OneDrive-Inbox)
+  - `web_portals.json` (Konfiguration der Web-Portale, aus `web_portals.example.json` kopieren)
   - `firma_aliases.json` (Firmen-Alias-Zuordnungen für die Erkennung)
   - `dashboard/` (optional: Web-Dashboard)
 - `tests/` (Unit-Tests für die Erkennungslogik)
@@ -47,7 +49,7 @@ Zusätzliche Details/Notizen sind auch hier dokumentiert:
 - Linux (empfohlen/aktuell genutzt)
 - Python 3.x
 
-### System-Tools für OCR
+### System-Tools für OCR und Web-Automation
 Für die OCR/Extraktion von Seite 1:
 - `pdftoppm` (Poppler)
 - `tesseract`
@@ -57,6 +59,12 @@ Ubuntu/Debian:
 ```bash
 sudo apt update
 sudo apt install -y poppler-utils tesseract-ocr tesseract-ocr-deu
+```
+
+Für `web_ingest.py` zusätzlich Playwright-Browser:
+```bash
+# Nach pip install -r requirements.txt:
+playwright install chromium
 ```
 
 ### Python Dependencies
@@ -179,6 +187,47 @@ python imap_ingest.py --all --delete
 
 ---
 
+## Optional: Web-Portal → OneDrive Inbox
+
+`web_ingest.py` loggt sich automatisch in konfigurierte Web-Portale ein, lädt PDFs herunter und stellt sie in den OneDrive-Inbox. Intern wird Playwright (headless Chromium) verwendet.
+
+### Einrichten
+
+```bash
+cp SortmyPDFs/web_portals.example.json SortmyPDFs/web_portals.json
+```
+
+Dann `web_portals.json` befüllen — pro Portal:
+- `login_url`, `username_selector`, `password_selector`, `submit_selector`
+- `documents_url` (URL der Dokumentenliste nach Login)
+- `download_button_selector` für JS-getriggerte Downloads, oder `pdf_link_selector` für direkte `<a href="…pdf">`-Links
+- Credentials über `.env`-Variablen (z.B. `WWK_USER`, `WWK_PASS`)
+
+### Nutzung
+
+```bash
+python web_ingest.py                  # alle konfigurierten Portale
+python web_ingest.py --portal WWK    # nur ein Portal
+python web_ingest.py --list          # Dry-Run: Dokumente auflisten ohne Upload
+python web_ingest.py --screenshot    # Screenshots für Diagnose speichern
+```
+
+### Aktuell konfiguriertes Portal: WWK
+
+- **Login**: `https://my.wwk.de/` (OpenAM SSO → `https://sso.wwk.de/`)
+- **Dokumente**: `https://wwkinside.wwk.de/group/portal/meine-dokumente`
+- **Download**: JS-getriggerte Links (kein direktes PDF-href)
+- **Credentials**: `WWK_USER` / `WWK_PASS` in `.env`
+- **Deduplizierung**: per SHA-256-Hash in `state_web.json`
+
+### Neues Portal hinzufügen
+
+1. Eintrag in `web_portals.json` ergänzen (analog zum WWK-Beispiel)
+2. Credentials in `.env` eintragen
+3. Mit `--screenshot --list` testen — gespeicherte PNGs zeigen was der Browser sieht
+
+---
+
 ## Dashboard (optional)
 
 Das Dashboard liegt unter `SortmyPDFs/dashboard/`.
@@ -222,6 +271,7 @@ Eine Beispielkonfiguration (Service+Timer) findest du ausführlich in:
 
 - `SortmyPDFs/state.json`: bereits verarbeitete OneDrive-Dateien
 - `SortmyPDFs/state_imap.json`: verarbeitete IMAP-UIDs + Attachment-Hashes
+- `SortmyPDFs/state_web.json`: hochgeladene Web-Portal-PDFs (SHA-256-Hashes)
 - `SortmyPDFs/.tmp/`: temporäre OCR-Artefakte
 
 ---
@@ -286,6 +336,8 @@ Die Tests decken alle oben genannten Erkennungsfunktionen ab (43 Tests).
 - **OCR fehlt / schlechte Erkennung**: prüfen, ob `pdftoppm` und `tesseract` installiert sind.
 - **Graph Auth**: Device-Code erneut ausführen: `python auth_device_code.py`
 - **IMAP SSL Hostname mismatch**: `IMAP_HOST` passt nicht zum Zertifikat (SAN/CN).
+- **web_ingest Login schlägt fehl**: `--screenshot` nutzen — `debug_<Portal>_login_page.png` zeigt was der Browser sieht. Selektoren in `web_portals.json` anpassen.
+- **web_ingest 0 Dokumente**: `documents_url` in `web_portals.json` prüfen; mit `--screenshot` wird `debug_<Portal>_documents_page.png` gespeichert.
 
 ---
 

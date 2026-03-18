@@ -9,7 +9,7 @@ load_dotenv(BASE / ".env")
 
 TENANT = os.getenv("GRAPH_TENANT", "consumers")
 CLIENT_ID = os.getenv("GRAPH_CLIENT_ID")
-SCOPES = os.getenv("GRAPH_SCOPES", "Files.ReadWrite.All offline_access").split()
+SCOPES = os.getenv("GRAPH_SCOPES", "https://graph.microsoft.com/Files.ReadWrite.All offline_access").split()
 
 if not CLIENT_ID:
     raise SystemExit("Missing GRAPH_CLIENT_ID. Copy .env.example -> .env and set GRAPH_CLIENT_ID.")

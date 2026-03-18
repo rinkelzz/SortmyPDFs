@@ -46,7 +46,7 @@ _validate_config()
 
 TENANT = os.getenv("GRAPH_TENANT", "consumers")
 CLIENT_ID = os.getenv("GRAPH_CLIENT_ID")
-SCOPES = os.getenv("GRAPH_SCOPES", "Files.ReadWrite.All").split()
+SCOPES = os.getenv("GRAPH_SCOPES", "https://graph.microsoft.com/Files.ReadWrite.All offline_access").split()
 INBOX = os.getenv("ONEDRIVE_INBOX", "vomDrucker")
 TARGET_ROOT = os.getenv("ONEDRIVE_TARGET_ROOT", "SortmyPDFs")
 
