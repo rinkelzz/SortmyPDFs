@@ -20,6 +20,11 @@
       </div>
     </div>
     <div class="card">
+      <div class="muted">Web Portale (hochgeladen)</div>
+      <div class="kpi">{{ web_total }}</div>
+      <div class="muted"><a href="/web-portals">Details →</a></div>
+    </div>
+    <div class="card">
       <div class="muted">Warteschlange (OneDrive {{ 'live' if live_inbox_enabled else '—' }})</div>
       {% if inbox_pdf_count is not none %}
         <div class="kpi">{{ inbox_pdf_count }}</div>
